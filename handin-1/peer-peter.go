@@ -4,7 +4,6 @@ Ask for address to connect to
 Connect to the server, and add it to a list of connections
 Start listening for incoming connections
 
-
 */
 
 package main
