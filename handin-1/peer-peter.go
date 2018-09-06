@@ -30,7 +30,7 @@ func handleConnection(conn net.Conn) {
 
 		if err != nil {
 			fmt.Println("Ending session with " + otherEnd)
-			addArrow()
+			printArrow()
 
 			// Finding the index of conn in connections
 			index := -1
@@ -56,16 +56,17 @@ func handleConnection(conn net.Conn) {
 
 func listenForConnections() {
 
-	fmt.Println("Listening for connections...")
+	fmt.Println("Listening for connections on:")
 	ln, _ := net.Listen("tcp", ":")
 	defer ln.Close()
 
 	// Printing the port
 	host, port, _ := net.SplitHostPort(ln.Addr().String())
+	fmt.Println("Addr: " + ln.Addr().String())
 	fmt.Println("Host: " + host)
 	fmt.Println("Port: " + port)
 
-	addArrow()
+	printArrow()
 
 	for {
 		conn, _ := ln.Accept()
@@ -91,17 +92,17 @@ func broadcast() {
 			connections[i].Write([]byte(msg))
 		}
 
-		addArrow()
+		printArrow()
 	}
 }
 
-func addArrow() {
+func printArrow() {
 	fmt.Print("> ")
 }
 
-var outbound = make(chan string)
-var connections = []net.Conn{}
-var messagesSent = make(map[string]bool)
+var outbound = make(chan string)         // A channel for all messages
+var connections = []net.Conn{}           // A list of all current connections
+var messagesSent = make(map[string]bool) // A map of all received messages
 
 func main() {
 
@@ -119,12 +120,13 @@ func main() {
 	fmt.Print("Enter port> ")
 	port, _ := reader.ReadString('\n')
 
-	// Establish connection
+	// Try to establish connection
 	fullAddress := strings.Replace(ip+":"+port, "\n", "", -1)
 	conn, err := net.Dial("tcp", fullAddress)
 	if err != nil {
-		fmt.Println("No peer found or invalid IP or Port")
+		fmt.Println("No peer found or invalid IP/Port")
 	} else {
+		fmt.Println("Connection successful")
 		go handleConnection(conn)
 	}
 
@@ -135,7 +137,7 @@ func main() {
 	go listenForConnections()
 
 	// Start listening for input
-	addArrow()
+	printArrow()
 	for {
 		reader := bufio.NewReader(os.Stdin)
 
@@ -143,6 +145,7 @@ func main() {
 		for {
 			text, _ := reader.ReadString('\n')
 
+			// Exit the program if the user types 'quit'
 			if text == "quit\n" {
 				return
 			}
