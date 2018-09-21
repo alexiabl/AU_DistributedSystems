@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 )
 
+var filename = "aes_test.txt"
+
 // Create a nonce for AES encryption and decryption
 func CreateNonce(len int) ([]byte) {
 	nonce := make([]byte,len)

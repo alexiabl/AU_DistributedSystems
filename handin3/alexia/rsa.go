@@ -7,7 +7,6 @@ import (
 )
 
 var e *big.Int = big.NewInt(3)
-var filename = "aes.txt"
 
 type PublicKey struct {
 	N_pk *big.Int
