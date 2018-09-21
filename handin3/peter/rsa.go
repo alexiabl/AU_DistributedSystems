@@ -1,15 +1,9 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
-	"encoding/gob"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
 )
 
@@ -55,7 +49,13 @@ func KeyGen(k int) *Key {
 	var p, q *big.Int
 
 	p = CalculatePrime(primeLength)
-	q = CalculatePrime(primeLength)
+	for {
+		q = CalculatePrime(primeLength)
+
+		if p.Cmp(q) != 0 {
+			break
+		}
+	}
 
 	fmt.Println("p:", p)
 	fmt.Println("q:", q)
@@ -123,160 +123,4 @@ func GenerateNonce(length int) []byte {
 	}
 
 	return nonce
-}
-
-// Encrypts a message to a file given a key, and returns the nonce
-func EncryptToFile(key, message []byte, fileName string) []byte {
-
-	fmt.Println("------------------------------")
-	fmt.Println("Encrypting a message to the file:", fileName)
-	fmt.Println("Message:", string(message))
-	fmt.Println("Key:", string(key))
-
-	var nonce = GenerateNonce(12)
-	fmt.Println("Nonce:", string(nonce))
-
-	block, err := aes.NewCipher(key)
-
-	if err != nil {
-		panic("Error while creating AES Cipher: " + err.Error())
-	}
-
-	aesgcm, err := cipher.NewGCM(block)
-
-	if err != nil {
-		panic("Error while creating AES GCM: " + err.Error())
-	}
-
-	var msg = aesgcm.Seal(nil, nonce, message, nil)
-
-	fmt.Println("Encrypted message:", string(msg))
-
-	err = ioutil.WriteFile(fileName, msg, 0644) //TODO: Get mode by code
-
-	if err != nil {
-		panic("Unable to open file:" + err.Error())
-	}
-
-	fmt.Println(" ----- File successfully written -----")
-
-	return nonce
-}
-
-func DecryptFromFile(key, nonce []byte, fileName string) {
-
-	fmt.Println("------------------------------")
-	fmt.Println("Decrypting the file:", fileName)
-	fmt.Println("Key:", string(key))
-	fmt.Println("Nonce:", string(nonce))
-
-	file, err := ioutil.ReadFile(fileName)
-
-	if err != nil {
-		panic("Unable to open file: " + err.Error())
-	}
-
-	var ciphertext = []byte(file)
-
-	fmt.Println("Encrypted message:", string(ciphertext))
-
-	block, err := aes.NewCipher(key)
-
-	if err != nil {
-		panic("Error while creating AES Cipher: " + err.Error())
-	}
-
-	aesgcm, err := cipher.NewGCM(block)
-
-	if err != nil {
-		panic("Error while creating AES GCM: " + err.Error())
-	}
-
-	msg, err := aesgcm.Open(nil, nonce, ciphertext, nil)
-
-	if err != nil {
-		panic("Error decrypting the ciphertext: " + err.Error())
-	}
-
-	fmt.Println("Decrypted message:", string(msg))
-	fmt.Println(" ----- Decryption successful -----")
-}
-
-func testRSA() {
-	var key = KeyGen(16)
-
-	// message < n
-	var message = big.NewInt(1337)
-
-	fmt.Println("Message:", message)
-
-	var ciphertext = Encrypt(key.E, key.N, message)
-	fmt.Println("Ciphertext:", ciphertext)
-
-	var decryptedMessage = Decrypt(key.D, key.N, ciphertext)
-	fmt.Println("Decrypted message:", decryptedMessage)
-}
-
-func testAES() {
-	var fileName = "missionDetails"
-
-	var message = []byte("Super secret message")
-	var key = []byte("secretkeyteksjel")
-	var nonce = EncryptToFile(key, message, fileName)
-
-	DecryptFromFile(key, nonce, fileName)
-}
-
-func testGob() {
-	gob.Register(Key{})
-	gob.Register(big.Int{})
-
-	var key = *KeyGen(16)
-	fmt.Println("Key before decryption:", key)
-
-	var buffer bytes.Buffer
-	var writer = bufio.NewWriter(&buffer)
-	var reader = bufio.NewReader(&buffer)
-
-	var enc = gob.NewEncoder(writer)
-	var err = enc.Encode(key)
-	if err != nil {
-		panic("Error while encoding key: " + err.Error())
-	} else {
-		writer.Flush()
-
-		/*var bytes = make([]byte, buffer.Len())
-		n, err := reader.Read(bytes)
-
-		if err != nil {
-			panic("Error writing bytes to byte array: " + err.Error())
-		}
-
-		fmt.Println(bytes)*/
-
-		var dec = gob.NewDecoder(reader)
-		var newKey = new(Key)
-		err = dec.Decode(newKey)
-
-		if err != nil {
-			panic("Error while decoding: " + err.Error())
-		}
-
-		fmt.Println("Key after decryption:", newKey)
-	}
-}
-
-func ultimateTest() {
-
-}
-
-func main() {
-
-	//testRSA()
-
-	//testAES()
-
-	testGob()
-
-	ultimateTest()
 }
