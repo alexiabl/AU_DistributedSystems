@@ -4,12 +4,6 @@ import (
 	"fmt"
 	"math/big"
 	"crypto/rand"
-	"crypto/aes"
-	"crypto/cipher"
-	"io/ioutil"
-	"encoding/gob"
-	"bytes"
-	"bufio"
 )
 
 var e *big.Int = big.NewInt(3)
@@ -116,48 +110,6 @@ func Decrypt(ciphertext *big.Int, n *big.Int, p *big.Int, q *big.Int)(*big.Int, 
 	return d,message
 }
 
-// Create a nonce for AES encryption and decryption
-func CreateNonce(len int) ([]byte) {
-	nonce := make([]byte,len)
-	return nonce
-}
-
-// AES encryption that writes the ciphertext to a file
-func EncryptToFile(message []byte, key []byte) ([]byte) {
-	block, err := aes.NewCipher(key)
-	nonce := CreateNonce(12)
-	if err != nil {
-		panic(err.Error())
-	}
-	gcm, _ := cipher.NewGCM(block)
-
-	ciphertext := gcm.Seal(nil,nonce,message,nil)
-	ioutil.WriteFile(filename,ciphertext,0644)
-	fmt.Println("ciphertext aes: ",ciphertext)
-	return ciphertext
-}
-
-// AES decryption from the file 
-func DecryptFromFile(key []byte) ([]byte){
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		panic(err.Error())
-	}
-	ciphertext, err := ioutil.ReadFile(filename)
-	nonce := CreateNonce(12)
-	if err != nil {
-		panic(err.Error())
-	}
-	gcm, _ := cipher.NewGCM(block)
-	message, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		panic(err.Error())
-	}
-	//fmt.Println("decrypted message from file: ",string(message[:]))
-	return message
-
-}
-
 // Method to test RSA individually
 func testRSA(){
 	n,p,q:=KeyGen(21)
@@ -172,61 +124,3 @@ func testRSA(){
 	fmt.Println("decrypted message = ",message)
 }
 
-// Method to test AES individually
-func testAES(){
-	key := []byte("1098765432100000")
-	message := []byte("Hi my name is Alexia")
-	fmt.Println("original message: ",string(message[:]))
-	EncryptToFile(message,key)
-	decrypted := DecryptFromFile(key)
-	fmt.Println("decrypted message from file: ",string(decrypted[:]))
-}
-
-func main(){
-	fmt.Println("RSA TEST:")
-	fmt.Println("=============")
-	testRSA()
-
-	fmt.Println("\nAES TEST:")
-	fmt.Println("=============")
-	testAES()
-
-	fmt.Println("\nTESTING RSA WITH AES:")
-	fmt.Println("=============")
-	key := []byte("1098765432100000")
-	n,p,q:=KeyGen(14)
-
-	//key in RSA (n,e)
-	pk := generatePublicKey(n,e)
-	fmt.Println("Public Key (n,e): ",pk.N_pk, pk.E_pk)
-	d := calculateD(p,q)
-	sk := generateSecretKey(n,d)
-	fmt.Println("Secret Key (n,d): ",sk.N_sk,sk.D_sk)
-	
-	var buffer bytes.Buffer
-	var writer = bufio.NewWriter(&buffer)	
-	var encoder = gob.NewEncoder(writer)
-	err := encoder.Encode(&pk)
-	if (err != nil){
-		panic(err.Error())
-	} else{
-		writer.Flush()
-	}
-	fmt.Println("Encoded public key: ",buffer)
-	EncryptToFile(buffer.Bytes(),key)
-	encoded_key := DecryptFromFile(key)
-	fmt.Println("Decrypted encoded key: ",encoded_key)
-
-	buffer.Reset()
-	buffer.Write(encoded_key)
-	var reader = bufio.NewReader(&buffer)
-	var publicKey = &PublicKey{}
-	var dec = gob.NewDecoder(reader)
-	err = dec.Decode(publicKey)
-	if (err != nil){
-		fmt.Println("Error - ", err.Error())
-	}
-	fmt.Println("Decrypted key: ", publicKey.N_pk,publicKey.E_pk)
-
-
-}
