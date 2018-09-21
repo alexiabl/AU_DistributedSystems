@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/gob"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -11,9 +14,9 @@ import (
 )
 
 type Key struct {
-	n *big.Int
-	e *big.Int
-	d *big.Int
+	N *big.Int
+	E *big.Int
+	D *big.Int
 }
 
 var e = big.NewInt(3)
@@ -71,7 +74,7 @@ func KeyGen(k int) *Key {
 	fmt.Println("Public key (e, n): (" + e.String() + ", " + n.String() + ")")
 	fmt.Println("Secret key (d, n): (" + d.String() + ", " + n.String() + ")")
 
-	var res = Key{n: n, e: e, d: d}
+	var res = Key{N: n, E: e, D: d}
 
 	return &res
 }
@@ -207,10 +210,10 @@ func testRSA() {
 
 	fmt.Println("Message:", message)
 
-	var ciphertext = Encrypt(key.e, key.n, message)
+	var ciphertext = Encrypt(key.E, key.N, message)
 	fmt.Println("Ciphertext:", ciphertext)
 
-	var decryptedMessage = Decrypt(key.d, key.n, ciphertext)
+	var decryptedMessage = Decrypt(key.D, key.N, ciphertext)
 	fmt.Println("Decrypted message:", decryptedMessage)
 }
 
@@ -224,9 +227,56 @@ func testAES() {
 	DecryptFromFile(key, nonce, fileName)
 }
 
+func testGob() {
+	gob.Register(Key{})
+	gob.Register(big.Int{})
+
+	var key = *KeyGen(16)
+	fmt.Println("Key before decryption:", key)
+
+	var buffer bytes.Buffer
+	var writer = bufio.NewWriter(&buffer)
+	var reader = bufio.NewReader(&buffer)
+
+	var enc = gob.NewEncoder(writer)
+	var err = enc.Encode(key)
+	if err != nil {
+		panic("Error while encoding key: " + err.Error())
+	} else {
+		writer.Flush()
+
+		/*var bytes = make([]byte, buffer.Len())
+		n, err := reader.Read(bytes)
+
+		if err != nil {
+			panic("Error writing bytes to byte array: " + err.Error())
+		}
+
+		fmt.Println(bytes)*/
+
+		var dec = gob.NewDecoder(reader)
+		var newKey = new(Key)
+		err = dec.Decode(newKey)
+
+		if err != nil {
+			panic("Error while decoding: " + err.Error())
+		}
+
+		fmt.Println("Key after decryption:", newKey)
+	}
+}
+
+func ultimateTest() {
+
+}
+
 func main() {
 
-	testRSA()
+	//testRSA()
 
-	testAES()
+	//testAES()
+
+	testGob()
+
+	ultimateTest()
 }
