@@ -40,6 +40,7 @@ func KeyGen(k int) (*big.Int, *big.Int, *big.Int){
 	return n,p,q
 }
 
+// Creates and returns a public key object with the n and e sent
 func generatePublicKey(n *big.Int, e *big.Int) (PublicKey){
 	pk := new(PublicKey)
 	pk.N_pk = n
@@ -88,6 +89,7 @@ func subtract(prime *big.Int, i int64) (result *big.Int){
 	return result
 }
 
+// Creates and returns Secret key object with the n and d sent
 func generateSecretKey(n *big.Int, d *big.Int)(SecretKey){
 	sk := new(SecretKey)
 	sk.N_sk = n
@@ -179,8 +181,6 @@ func testAES(){
 	decrypted := DecryptFromFile(key)
 	fmt.Println("decrypted message from file: ",string(decrypted[:]))
 }
-
-
 
 func main(){
 	fmt.Println("RSA TEST:")
