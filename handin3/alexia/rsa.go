@@ -20,7 +20,7 @@ type SecretKey struct {
 }
 
 //RSA Key generator
-func KeyGen(k int) (*big.Int, *big.Int, *big.Int){
+func KeyGen(k int) (*big.Int, *big.Int){
 	//check if it is even
 	var p,q *big.Int
 	n := new(big.Int)
@@ -30,8 +30,9 @@ func KeyGen(k int) (*big.Int, *big.Int, *big.Int){
 		n.Mul(p,q)
 
 	//var n  = p * q
+	d := calculateD(p,q)
 	fmt.Println("bit length n =",n.BitLen())
-	return n,p,q
+	return n,d
 }
 
 // Creates and returns a public key object with the n and e sent
@@ -61,7 +62,7 @@ func Encrypt(message *big.Int, n *big.Int) (*big.Int){
 	cipher := new(big.Int)
 	exp := cipher.Exp(message,e,nil)
 	cipher.Mod(exp,n)
-	fmt.Println("ciphertext = ",cipher)
+	//fmt.Println("ciphertext = ",cipher)
 	return cipher
 }
 
@@ -101,9 +102,8 @@ func calculateD(p *big.Int, q *big.Int)(*big.Int){
 }
 
 // RSA Decryption method
-func Decrypt(ciphertext *big.Int, n *big.Int, p *big.Int, q *big.Int)(*big.Int, *big.Int){
+func Decrypt(ciphertext *big.Int, n *big.Int, d *big.Int)(*big.Int, *big.Int){
 	//d = 3^-1 mod (p-1)(q-1)
-	d := calculateD(p,q)
 	temp := new(big.Int)
 	message := new(big.Int)
 	message.Mod(temp.Exp(ciphertext,d,nil),n)
@@ -112,14 +112,13 @@ func Decrypt(ciphertext *big.Int, n *big.Int, p *big.Int, q *big.Int)(*big.Int, 
 
 // Method to test RSA individually
 func testRSA(){
-	n,p,q:=KeyGen(21)
-	fmt.Println("p = ",p)
-	fmt.Println("q = ",q)
+	n,d:=KeyGen(21)
 	fmt.Println("Public Key (n,e)",n,e)
 	original_msg := big.NewInt(13215)
 	fmt.Println("original message = ",original_msg)
 	cipher := Encrypt(original_msg,n)
-	d,message := Decrypt(cipher,n,p,q)
+	fmt.Println("ciphertext = ",cipher)
+	d,message := Decrypt(cipher,n,d)
 	fmt.Println("d = ",d)
 	fmt.Println("decrypted message = ",message)
 }
