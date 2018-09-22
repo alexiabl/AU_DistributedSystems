@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math/big"
 	"crypto/rand"
+	mathrand "math/rand"
+	"time"
 )
 
 var e *big.Int = big.NewInt(3)
@@ -111,9 +113,13 @@ func Decrypt(ciphertext *big.Int, n *big.Int, d *big.Int)(*big.Int, *big.Int){
 
 // Method to test RSA individually
 func testRSA(){
-	n,d:=KeyGen(21)
+	k := 20
+	fmt.Println("k: ",k)
+	n,d:=KeyGen(k)
 	fmt.Println("Public Key (n,e)",n,e)
-	original_msg := big.NewInt(13215)
+	mathrand.Seed(time.Now().Unix())
+	rand_numb := mathrand.Intn(10000-10)+10
+	original_msg := big.NewInt(int64(rand_numb))
 	fmt.Println("original message: ",original_msg)
 	cipher := Encrypt(original_msg,n)
 	fmt.Println("ciphertext: ",cipher)
