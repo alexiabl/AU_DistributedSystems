@@ -15,7 +15,7 @@ func ultimateTest() {
 	fmt.Println("Key:", keyRSA)
 
 	// Encrypt a message with the key
-	var message = big.NewInt(133)
+	var message = big.NewInt(1337)
 	var ciphertext = Encrypt(keyRSA.E, keyRSA.N, message)
 	fmt.Println("Message:", message)
 	fmt.Println("Ciphertext:", ciphertext)
@@ -24,7 +24,7 @@ func ultimateTest() {
 	var bytes = ConvertKeyToByteArray(*keyRSA)
 
 	// Save the key to a file
-	var keyAES = []byte("wulululululululu") // TODO: Make this a random string
+	var keyAES = GenerateNonce(16)
 	var fileName = "EncryptedKey"
 	var nonce = EncryptToFile(keyAES, bytes, fileName)
 
@@ -33,7 +33,7 @@ func ultimateTest() {
 	var decodedKey = ConvertByteArrayToKey(encodedKey)
 	fmt.Println("Decoded key:", decodedKey)
 
-	// Decrypt the message with t he key
+	// Decrypt the message with the key
 	var decryptedMessage = Decrypt(decodedKey.D, decodedKey.N, ciphertext)
 	fmt.Println("Decrypted message:", decryptedMessage)
 	var cmp = decryptedMessage.Cmp(message)
