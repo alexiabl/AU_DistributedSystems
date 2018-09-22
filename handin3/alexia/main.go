@@ -7,21 +7,10 @@ import (
 	"bufio"
 )
 
-func main(){
-	fmt.Println("RSA TEST:")
-	fmt.Println("=============")
-	testRSA()
-
-	fmt.Println("\nAES TEST:")
-	fmt.Println("=============")
-	testAES()
-
-	fmt.Println("\nTESTING RSA WITH AES:")
-	fmt.Println("=============")
+func ultimateTest(){
 	key := []byte("1098765432100001")
 	n,d:=KeyGen(16)
 
-	//key in RSA (n,e)
 	pk := generatePublicKey(n,e)
 	fmt.Println("RSA Public Key (n,e): ",pk.N_pk, pk.E_pk)
 	sk := generateSecretKey(n,d)
@@ -36,10 +25,6 @@ func main(){
 	} else{
 		writer.Flush()
 	}
-	//fmt.Println("Encoded RSA secret key: ",buffer)
-
-	//cipherkey := Encrypt(big.NewInt(15111),n)
-	//fmt.Println("RSA ciphertext key: ",cipherkey)
 	fmt.Println("Encrypting RSA secret key to file...")
 	EncryptToFile(buffer.Bytes(),key)
 	encoded_key := DecryptFromFile(key)
@@ -55,4 +40,19 @@ func main(){
 		fmt.Println("Error - ", err.Error())
 	}
 	fmt.Println("Decrypted RSA secret key: ", secretKey.N_sk,secretKey.D_sk)
+}
+
+func main(){
+	fmt.Println("RSA TEST:")
+	fmt.Println("=============")
+	testRSA()
+
+	fmt.Println("\nAES TEST:")
+	fmt.Println("=============")
+	testAES()
+
+	fmt.Println("\nTESTING RSA WITH AES:")
+	fmt.Println("=============")
+	ultimateTest()
+	
 }
