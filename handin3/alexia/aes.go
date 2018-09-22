@@ -26,7 +26,7 @@ func EncryptToFile(message []byte, key []byte) ([]byte) {
 
 	ciphertext := gcm.Seal(nil,nonce,message,nil)
 	ioutil.WriteFile(filename,ciphertext,0644)
-	fmt.Println("ciphertext aes: ",ciphertext)
+	fmt.Println("AES encryption ciphertext: ",ciphertext)
 	return ciphertext
 }
 
@@ -47,6 +47,7 @@ func DecryptFromFile(key []byte) ([]byte){
 		panic(err.Error())
 	}
 	//fmt.Println("decrypted message from file: ",string(message[:]))
+	//os.remove(filename)
 	return message
 
 }
@@ -54,7 +55,7 @@ func DecryptFromFile(key []byte) ([]byte){
 // Method to test AES individually
 func testAES(){
 	key := []byte("1098765432100000")
-	message := []byte("Hi my name is Alexia")
+	message := []byte("This is an AES test")
 	fmt.Println("original message: ",string(message[:]))
 	EncryptToFile(message,key)
 	decrypted := DecryptFromFile(key)

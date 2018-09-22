@@ -30,7 +30,7 @@ func KeyGen(k int) (*big.Int, *big.Int){
 
 	//var n  = p * q
 	d := calculateD(p,q)
-	fmt.Println("bit length n =",n.BitLen())
+	fmt.Println("bit length n: ",n.BitLen())
 	return n,d
 }
 
@@ -48,7 +48,7 @@ func calculatePrime(k int) (*big.Int){
 	for{
 		prime, err := rand.Prime(rand.Reader,int(k/2))
 		if (err != nil){
-			fmt.Println("Error generating prime ",err)
+			fmt.Println("Error generating prime: ",err)
 		}
 		if (TestGCD(prime)){
 			return prime
@@ -114,11 +114,11 @@ func testRSA(){
 	n,d:=KeyGen(21)
 	fmt.Println("Public Key (n,e)",n,e)
 	original_msg := big.NewInt(13215)
-	fmt.Println("original message = ",original_msg)
+	fmt.Println("original message: ",original_msg)
 	cipher := Encrypt(original_msg,n)
-	fmt.Println("ciphertext = ",cipher)
+	fmt.Println("ciphertext: ",cipher)
 	d,message := Decrypt(cipher,n,d)
-	fmt.Println("d = ",d)
-	fmt.Println("decrypted message = ",message)
+	fmt.Println("d: ",d)
+	fmt.Println("decrypted message: ",message)
 }
 

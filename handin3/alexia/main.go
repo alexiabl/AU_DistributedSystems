@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 	"bytes"
 	"bufio"
-	"math/big"
 )
 
 func main(){
@@ -24,9 +23,9 @@ func main(){
 
 	//key in RSA (n,e)
 	pk := generatePublicKey(n,e)
-	fmt.Println("Public Key (n,e): ",pk.N_pk, pk.E_pk)
+	fmt.Println("RSA Public Key (n,e): ",pk.N_pk, pk.E_pk)
 	sk := generateSecretKey(n,d)
-	fmt.Println("Secret Key (n,d): ",sk.N_sk,sk.D_sk)
+	fmt.Println("RSA Secret Key (n,d): ",sk.N_sk,sk.D_sk)
 	
 	var buffer bytes.Buffer
 	var writer = bufio.NewWriter(&buffer)	
@@ -37,14 +36,14 @@ func main(){
 	} else{
 		writer.Flush()
 	}
-	fmt.Println("Encoded secret key: ",buffer)
+	//fmt.Println("Encoded RSA secret key: ",buffer)
 
-	cipherkey := Encrypt(big.NewInt(15111),n)
-	fmt.Println("RSA ciphertext key: ",cipherkey)
-
+	//cipherkey := Encrypt(big.NewInt(15111),n)
+	//fmt.Println("RSA ciphertext key: ",cipherkey)
+	fmt.Println("Encrypting RSA secret key to file...")
 	EncryptToFile(buffer.Bytes(),key)
 	encoded_key := DecryptFromFile(key)
-	fmt.Println("Decrypted encoded key: ",encoded_key)
+	fmt.Println("Decrypted encoded RSA key: ",encoded_key)
 
 	buffer.Reset()
 	buffer.Write(encoded_key)
@@ -55,7 +54,5 @@ func main(){
 	if (err != nil){
 		fmt.Println("Error - ", err.Error())
 	}
-	fmt.Println("Decrypted key: ", secretKey.N_sk,secretKey.D_sk)
-	_,decryped_key := Decrypt(cipherkey,secretKey.N_sk,secretKey.D_sk)
-	fmt.Println("Decryped RSA Key: ",decryped_key)
+	fmt.Println("Decrypted RSA secret key: ", secretKey.N_sk,secretKey.D_sk)
 }
