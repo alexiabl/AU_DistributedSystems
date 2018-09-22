@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"math/big"
+	"os"
 )
 
 func ultimateTest() {
@@ -37,12 +38,15 @@ func ultimateTest() {
 	fmt.Println("Decrypted message:", decryptedMessage)
 	var cmp = decryptedMessage.Cmp(message)
 
-	// If they're equal
+	// If they're equal: Happiness
 	if cmp == 0 {
 		fmt.Println("Happiness")
 	} else {
 		fmt.Println("Sadness")
 	}
+
+	// Remove the file
+	os.Remove(fileName)
 }
 
 func ConvertKeyToByteArray(key Key) []byte {
