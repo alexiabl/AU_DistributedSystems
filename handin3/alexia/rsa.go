@@ -22,27 +22,19 @@ type SecretKey struct {
 
 //RSA Key generator
 func KeyGen(k int) (*big.Int, *big.Int){
-	//check if it is even
-	var p,q *big.Int
 	n := new(big.Int)
-
+	p := new(big.Int)
+	q := new(big.Int)
+	
+	for (p.Cmp(q)==0){
 		p = calculatePrime(k)
 		q = calculatePrime(k)
-		n.Mul(p,q)
+	}
+	n.Mul(p,q)
 
-	//var n  = p * q
 	d := calculateD(p,q)
 	fmt.Println("bit length n: ",n.BitLen())
 	return n,d
-}
-
-// Creates and returns a public key object with the n and e sent
-func generatePublicKey(n *big.Int, e *big.Int) (PublicKey){
-	pk := new(PublicKey)
-	pk.N_pk = n
-	pk.E_pk = e
-
-	return *pk
 }
 
 // Helper method to calculate a prime number and check the GCD condition
@@ -58,12 +50,20 @@ func calculatePrime(k int) (*big.Int){
 	}
 }
 
+// Creates and returns a public key object with the n and e sent
+func generatePublicKey(n *big.Int, e *big.Int) (PublicKey){
+	pk := new(PublicKey)
+	pk.N_pk = n
+	pk.E_pk = e
+
+	return *pk
+}
+
 // RSA Encryption method
 func Encrypt(message *big.Int, n *big.Int) (*big.Int){
 	cipher := new(big.Int)
 	exp := cipher.Exp(message,e,nil)
 	cipher.Mod(exp,n)
-	//fmt.Println("ciphertext = ",cipher)
 	return cipher
 }
 
@@ -104,7 +104,6 @@ func calculateD(p *big.Int, q *big.Int)(*big.Int){
 
 // RSA Decryption method
 func Decrypt(ciphertext *big.Int, n *big.Int, d *big.Int)(*big.Int, *big.Int){
-	//d = 3^-1 mod (p-1)(q-1)
 	temp := new(big.Int)
 	message := new(big.Int)
 	message.Mod(temp.Exp(ciphertext,d,nil),n)

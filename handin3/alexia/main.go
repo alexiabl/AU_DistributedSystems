@@ -9,6 +9,7 @@ import (
 
 func ultimateTest(){
 	key := []byte("1098765432100001")
+	filename:="aes_test.txt"
 	n,d:=KeyGen(16)
 
 	pk := generatePublicKey(n,e)
@@ -26,8 +27,8 @@ func ultimateTest(){
 		writer.Flush()
 	}
 	fmt.Println("Encrypting RSA secret key to file...")
-	EncryptToFile(buffer.Bytes(),key)
-	encoded_key := DecryptFromFile(key)
+	EncryptToFile(buffer.Bytes(),key,filename)
+	encoded_key := DecryptFromFile(key,filename)
 	fmt.Println("Decrypted encoded RSA key: ",encoded_key)
 
 	buffer.Reset()
