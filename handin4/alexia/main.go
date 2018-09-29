@@ -50,10 +50,12 @@ func main(){
 
 	fmt.Println("\nAES TEST:")
 	fmt.Println("=============")
-	testAES()
+	//testAES()
 
 	fmt.Println("\nTESTING RSA WITH AES:")
 	fmt.Println("=============")
-	ultimateTest()
+	//ultimateTest()
+
+	RSASignTest()
 	
 }

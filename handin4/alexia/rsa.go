@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	mathrand "math/rand"
 	"time"
+	"crypto/sha256"
+
 )
 
 var e *big.Int = big.NewInt(3)
@@ -57,6 +59,17 @@ func generatePublicKey(n *big.Int, e *big.Int) (PublicKey){
 	pk.E_pk = e
 
 	return *pk
+}
+
+// Generates hash of message
+func Hash(message []byte) ([]byte) {
+	hash := sha256.New()
+	hash.Write(message)
+	return hash.Sum(nil)
+}
+
+func Sign(){
+
 }
 
 // RSA Encryption method
@@ -127,3 +140,22 @@ func testRSA(){
 	fmt.Println("decrypted message: ",message)
 }
 
+func RSASignTest(){
+	n,d := KeyGen(20)
+	//pk := generateSecretKey(n,d)
+	message := "Hello my name is Alexia"
+	start := time.Now()
+	h := Hash([]byte(message))
+	fmt.Printf("%x",h)
+	temp := new(big.Int)
+	temp2 := new(big.Int)
+	hash := temp.SetBytes(h)
+	sign := temp2.Exp(hash,temp2.Mod(d,n),nil)
+	//verify := temp.Exp(hash,temp.Mod(e,n),nil)
+	fmt.Println(sign)
+	fmt.Println("Time:",time.Since(start))
+	//fmt.Println(verify)
+
+
+	//signed_message := message
+}
