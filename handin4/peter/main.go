@@ -1,59 +1,110 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
-	"encoding/gob"
-	"bytes"
-	"bufio"
+	"io/ioutil"
+	"time"
 )
 
-func ultimateTest(){
-	key := []byte("1098765432100001")
-	filename:="aes_test.txt"
-	n,d:=KeyGen(16)
+func basicVerification() {
 
-	pk := generatePublicKey(n,e)
-	fmt.Println("RSA Public Key (n,e): ",pk.N_pk, pk.E_pk)
-	sk := generateSecretKey(n,d)
-	fmt.Println("RSA Secret Key (n,d): ",sk.N_sk,sk.D_sk)
-	
-	var buffer bytes.Buffer
-	var writer = bufio.NewWriter(&buffer)	
-	var encoder = gob.NewEncoder(writer)
-	err := encoder.Encode(&sk)
-	if (err != nil){
-		panic(err.Error())
-	} else{
-		writer.Flush()
-	}
-	fmt.Println("Encrypting RSA secret key to file...")
-	EncryptToFile(buffer.Bytes(),key,filename)
-	encoded_key := DecryptFromFile(key,filename)
-	fmt.Println("Decrypted encoded RSA key: ",encoded_key)
+	fmt.Println(" ----- Showcasing that signing and verification works -----")
 
-	buffer.Reset()
-	buffer.Write(encoded_key)
-	var reader = bufio.NewReader(&buffer)
-	var secretKey = &SecretKey{}
-	var dec = gob.NewDecoder(reader)
-	err = dec.Decode(secretKey)
-	if (err != nil){
-		fmt.Println("Error - ", err.Error())
-	}
-	fmt.Println("Decrypted RSA secret key: ", secretKey.N_sk,secretKey.D_sk)
+	// Generate a RSA key
+	n, d := KeyGen(256)
+	pk := generatePublicKey(n, e)
+	sk := generateSecretKey(n, d)
+
+	// Sign a message
+	messageString := "When I wake up, the other side of the bed is cold. My fingers stretch out, seeking Prim’s warmth but finding only the rough canvas cover of the mattress. She must have had bad dreams and climbed in with our mother. Of course, she did. This is the day of the reaping."
+	message := []byte(messageString)
+	signature := sign(message, sk)
+
+	// Print the message as a string and a byte array
+	fmt.Println("Message (string):", messageString, "\n")
+	fmt.Println("Message (byte array):", message, "\n")
+
+	// Print the generated signature
+	fmt.Println("Signature:", signature)
+
+	// Verifying a valid message
+	fmt.Println("Verifying valid message:", verify(message, signature, pk))
+
+	// Verifying a fake message
+	fakeMessage := []byte("When I wake up")
+	fmt.Println("Verifying fake message:", verify(fakeMessage, signature, pk))
 }
 
-func main(){
-	fmt.Println("RSA TEST:")
-	fmt.Println("=============")
-	testRSA()
+func testHashSpeed() {
 
-	fmt.Println("\nAES TEST:")
-	fmt.Println("=============")
-	testAES()
+	fmt.Println(" ----- Testing sha256 hash speed on 10kb file -----")
 
-	fmt.Println("\nTESTING RSA WITH AES:")
-	fmt.Println("=============")
-	ultimateTest()
-	
+	filename := "text/large_file.txt"
+	message, err := ioutil.ReadFile(filename)
+
+	bits := len(message) * 8
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// Setup sha
+	sha := sha256.New()
+
+	// Setup timer
+	timeStart := time.Now()
+
+	// Do actual hashing
+	sha.Write(message)
+
+	// Get time passed
+	endTime := time.Since(timeStart)
+	seconds := endTime.Seconds()
+
+	// Calculate bits per second
+	bitsPerSecond := float64(bits) / seconds
+
+	fmt.Println("Bits hashed:", bits)
+	fmt.Println("Hashing time:", endTime)
+	fmt.Printf("Hashing time (seconds): %f\n", seconds)
+	fmt.Printf("Bits per second: %f\n", bitsPerSecond)
+}
+
+func testSignatureSpeed() {
+
+	fmt.Println(" ----- Testing how long it takes to sign with a 2000 bit key -----")
+
+	// Generate a 2000 bit key
+	n, d := KeyGen(2000)
+	sk := generateSecretKey(n, d)
+
+	// Setup the message to be signed
+	message := make([]byte, 1999)
+
+	// Calculate average of 100 runs
+	var sum = time.Duration(0)
+	for i := 0; i < 100; i++ {
+		// Setup start time
+		startTime := time.Now()
+
+		// Do the actual signing
+		sign(message, sk)
+
+		// Calculate how long it took
+		endTime := time.Since(startTime)
+		sum += endTime
+	}
+
+	average := sum / 100
+
+	fmt.Println("Signing time (average):", average)
+}
+
+func main() {
+	basicVerification()
+
+	testHashSpeed()
+
+	testSignatureSpeed()
 }

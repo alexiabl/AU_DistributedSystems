@@ -1,20 +1,20 @@
 package main
 
 import (
-	"fmt"
 	"crypto/aes"
 	"crypto/cipher"
+	"fmt"
 	"io/ioutil"
 )
 
 // Create a nonce for AES encryption and decryption
-func CreateNonce(len int) ([]byte) {
-	nonce := make([]byte,len)
+func CreateNonce(len int) []byte {
+	nonce := make([]byte, len)
 	return nonce
 }
 
 // AES encryption that writes the ciphertext to a file
-func EncryptToFile(message []byte, key []byte, filename string) ([]byte) {
+func EncryptToFile(message []byte, key []byte, filename string) []byte {
 	block, err := aes.NewCipher(key)
 	nonce := CreateNonce(12)
 	if err != nil {
@@ -22,14 +22,14 @@ func EncryptToFile(message []byte, key []byte, filename string) ([]byte) {
 	}
 	gcm, _ := cipher.NewGCM(block)
 
-	ciphertext := gcm.Seal(nil,nonce,message,nil)
-	ioutil.WriteFile(filename,ciphertext,0644)
-	fmt.Println("AES encryption ciphertext: ",ciphertext)
+	ciphertext := gcm.Seal(nil, nonce, message, nil)
+	ioutil.WriteFile(filename, ciphertext, 0644)
+	fmt.Println("AES encryption ciphertext: ", ciphertext)
 	return ciphertext
 }
 
-// AES decryption from the file 
-func DecryptFromFile(key []byte, filename string) ([]byte){
+// AES decryption from the file
+func DecryptFromFile(key []byte, filename string) []byte {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		panic(err.Error())
@@ -46,15 +46,4 @@ func DecryptFromFile(key []byte, filename string) ([]byte){
 	}
 	return message
 
-}
-
-// Method to test AES individually
-func testAES(){
-	filename := "aes_test.txt"
-	key := []byte("1098765432100000")
-	message := []byte("This is an AES test")
-	fmt.Println("original message: ",string(message[:]))
-	EncryptToFile(message,key,filename)
-	decrypted := DecryptFromFile(key,filename)
-	fmt.Println("decrypted message from file: ",string(decrypted[:]))
 }
