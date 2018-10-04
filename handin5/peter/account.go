@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/big"
 	"reflect"
 	"sync"
 )
@@ -17,15 +18,17 @@ func MakeLedger() *Ledger {
 	return ledger
 }
 
-type Transaction struct {
-	ID     string
-	From   string
-	To     string
-	Amount int
+type SignedTransaction struct {
+	ID        string // Any string
+	From      string // A verification key coded as a string
+	To        string // A verification key coded as a string
+	Amount    int    // Amount to transfer
+	Signature string // Potential signature coded as string
 }
 
 type Peer struct {
 	Address string
+	Pk      string
 }
 
 type Message struct {
@@ -38,17 +41,39 @@ const NEW_PEER_MESSAGE = "newPeerMsg"                  // When the message conta
 const REQUEST_PEER_LIST_MESSAGE = "requestPeerListMsg" // When the message requests the list of peers
 const PEER_LIST_MESSAGE = "peerListMsg"                // When the message contains the list of peers
 
-func (l *Ledger) Transaction(t *Transaction) {
+func (l *Ledger) SignedTransaction(t *SignedTransaction) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	l.Accounts[t.From] -= t.Amount
-	l.Accounts[t.To] += t.Amount
+
+	// Get public key of the sender
+	pk := new(PublicKey)
+	pk.fromString(t.From)
+
+	signatureString := t.Signature
+	signature := new(big.Int)
+	signature.SetString(signatureString, 10)
+	message := GenerateMessageFromTransaction(t)
+
+	validSignature := verify(message, signature, *pk)
+
+	/* We verify that the t.Signature is a valid RSA
+	 * signature on the rest of the fields in t under
+	 * the public key t.From.
+	 */
+
+	if validSignature {
+		l.Accounts[t.From] -= t.Amount
+	}
 }
 
-func (l *Ledger) InitializeAccount(peer string) {
+func GenerateMessageFromTransaction(t *SignedTransaction) []byte {
+	return []byte(t.From + t.To + t.ID + string(t.Amount))
+}
+
+func (l *Ledger) InitializeAccount(peer Peer) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	l.Accounts[peer] = 0
+	l.Accounts[peer.Pk] = 0
 }
 
 func (l *Ledger) PrintStatus() {

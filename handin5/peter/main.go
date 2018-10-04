@@ -47,11 +47,14 @@ func handleConnection(conn net.Conn) {
 
 			switch message.ID {
 			case TRANSACTION_MESSAGE:
-				var transaction = message.Value.(Transaction)
+				var transaction = message.Value.(SignedTransaction)
 				var transID = transaction.From + transaction.ID
 
-				if contains(transactionsSent, transID) {
-					break
+				// If this transaction has already been sent, break
+				for i := 0; i < len(transactionsSent); i++ {
+					if transactionsSent[i] == transID {
+						break
+					}
 				}
 
 				handleTransaction(transaction)
@@ -63,16 +66,15 @@ func handleConnection(conn net.Conn) {
 				break
 			case NEW_PEER_MESSAGE:
 				var peer = message.Value.(Peer)
-				var address = peer.Address
 
 				// If the peer is already registered
-				if contains(peers, address) {
+				if isPeerRegistered(peer.Address) {
 					break
 				}
 
-				peers = append(peers, address)
-				ledger.InitializeAccount(address)
-				sort.Strings(peers)
+				peers = append(peers, peer)
+				ledger.InitializeAccount(peer)
+				sortPeers()
 
 				outboundMessages <- message
 				break
@@ -115,9 +117,9 @@ func sendMessage(conn net.Conn, msg Message) {
 	}
 }
 
-func contains(list []string, item string) bool {
-	for i := 0; i < len(list); i++ {
-		if list[i] == item {
+func isPeerRegistered(address string) bool {
+	for i := 0; i < len(peers); i++ {
+		if peers[i].Address == address {
 			return true
 		}
 	}
@@ -184,7 +186,7 @@ func getPeerList() {
 			return
 		}
 
-		var list = newMessage.Value.([]string)
+		var list = newMessage.Value.([]Peer)
 		fmt.Println("[Got list of peers]")
 		peers = list
 	}
@@ -197,7 +199,8 @@ func connectToPeers() {
 	var len = len(peers)
 	var index = -1
 	for i := 0; i < len; i++ {
-		if peers[i] == peerID {
+		peer := peers[i]
+		if peer == ownPeer {
 			index = i
 			break
 		}
@@ -210,20 +213,20 @@ func connectToPeers() {
 
 	// Connect to the 10 peers after peerID in the list with wrap around
 	for i := 1; i <= 10; i++ {
-		var currentIndex = (index + i) % len
-		var peer = peers[currentIndex]
+		currentIndex := (index + i) % len
+		peer := peers[currentIndex]
 
 		// If the list is exhausted
-		if peer == peerID {
+		if peer == ownPeer {
 			return
 		}
 
 		// Connect to the peer
-		conn, err := net.Dial("tcp", peer)
+		conn, err := net.Dial("tcp", peer.Address)
 		if err != nil {
-			fmt.Println("Unable to connect to peer: ", peer)
+			fmt.Println("Unable to connect to peer: ", peer.Address)
 		} else {
-			fmt.Println("Connected to: ", peer)
+			fmt.Println("Connected to: ", peer.Address)
 
 			go handleConnection(conn)
 		}
@@ -236,15 +239,14 @@ func registerPeersInLedger() {
 	}
 }
 
-func handleTransaction(trans Transaction) {
-	ledger.Transaction(&trans)
+func handleTransaction(trans SignedTransaction) {
+	ledger.SignedTransaction(&trans)
 	var transID = trans.From + trans.ID
 	transactionsSent = append(transactionsSent, transID)
 }
 
 func broadcastSelf() {
-	var peer = Peer{Address: peerID}
-	var message = Message{ID: NEW_PEER_MESSAGE, Value: peer}
+	var message = Message{ID: NEW_PEER_MESSAGE, Value: ownPeer}
 	outboundMessages <- message
 }
 
@@ -254,15 +256,15 @@ func setupListeningServer() net.Listener {
 
 	// Printing the IP's
 	var address = getOwnAddress()
-	fmt.Println("IPv4:\t", address)
 
 	// Printing the port
 	_, port, _ := net.SplitHostPort(ln.Addr().String())
-	fmt.Println("Port:\t", port)
 
-	// Add self to peer list
-	peerID = address + ":" + port
-	fmt.Println("Own peer ID is:", peerID)
+	// Generate address
+	fullAddress := address + ":" + port
+	fmt.Println("Listening on address:", fullAddress)
+
+	ownPeer = Peer{Address: fullAddress, Pk: pk.toString()}
 
 	printArrow()
 
@@ -270,24 +272,39 @@ func setupListeningServer() net.Listener {
 }
 
 func addSelfToList() {
-	peers = append(peers, peerID)
-	sort.Strings(peers)
+	peers = append(peers, ownPeer)
+	sortPeers()
+}
+
+func sortPeers() {
+	address := func(i, j int) bool {
+		return peers[i].Address < peers[j].Address
+	}
+	sort.SliceStable(peers, address)
 }
 
 var outboundMessages = make(chan Message) // A channel for all messages
 var connections = []net.Conn{}            // A list of all current connections
 var transactionsSent = []string{}         // A list of all received messages
-var peers = []string{}                    // List of all peers in the network
-var peerID string                         // The id of this peer (ip + : + port)
+var peers = []Peer{}                      // List of all peers in the network
+var ownPeer Peer                          // The id of this peer (public key as string)
+
+var pk PublicKey
+var sk SecretKey
 
 var transactionID = 0
 var ledger *Ledger
 
 func main() {
 
+	// Generate RSA key
+	n, d := KeyGen(2000)
+	pk = generatePublicKey(n, e)
+	sk = generateSecretKey(n, d)
+
 	// Register gob interfaces - need for en-/decoding
 	gob.Register(Peer{})
-	gob.Register(Transaction{})
+	gob.Register(SignedTransaction{})
 
 	// Creates the ledger
 	ledger = MakeLedger()
@@ -327,7 +344,7 @@ func main() {
 			// List all peers in the peer list
 			if text == "list\n" {
 				for index, peer := range peers {
-					fmt.Println(strconv.Itoa(index) + ": " + peer)
+					fmt.Println(strconv.Itoa(index+1) + ": " + peer.Address)
 				}
 			}
 
@@ -353,14 +370,14 @@ func main() {
 
 					if from == to {
 						fmt.Println("From and to cannot be the same")
-					} else if !contains(peers, from) && !contains(peers, to) {
+					} else if !isPeerRegistered(from) && !isPeerRegistered(to) {
 						fmt.Println("<from> or <to> not found in peers")
 					} else {
 						var amountStr = strings.Replace(splitMessage[3], "\n", "", -1)
 						var amount, _ = strconv.Atoi(amountStr)
-						var id = peerID + "-" + strconv.Itoa(transactionID)
+						var id = pk.toString() + "-" + strconv.Itoa(transactionID)
 						transactionID++
-						var transaction = Transaction{ID: id, From: from, To: to, Amount: amount}
+						var transaction = SignedTransaction{ID: id, From: from, To: to, Amount: amount}
 						var message = Message{ID: TRANSACTION_MESSAGE, Value: transaction}
 
 						handleTransaction(transaction)

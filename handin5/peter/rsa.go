@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"strings"
 )
 
 var e *big.Int = big.NewInt(3)
@@ -16,6 +17,44 @@ type PublicKey struct {
 type SecretKey struct {
 	N_sk *big.Int
 	D_sk *big.Int
+}
+
+func (pk PublicKey) toString() string {
+	return pk.N_pk.String() + ":" + pk.E_pk.String()
+}
+
+func (sk SecretKey) toString() string {
+	return sk.N_sk.String() + ":" + sk.D_sk.String()
+}
+
+func (pk PublicKey) fromString(str string) {
+	parts := strings.Split(str, ":")
+	n := parts[0]
+	e := parts[1]
+
+	nInt := new(big.Int)
+	nInt.SetString(n, 10)
+
+	eInt := new(big.Int)
+	eInt.SetString(e, 10)
+
+	pk.N_pk = nInt
+	pk.E_pk = eInt
+}
+
+func (sk SecretKey) fromString(str string) {
+	parts := strings.Split(str, ":")
+	n := parts[0]
+	d := parts[1]
+
+	nInt := new(big.Int)
+	nInt.SetString(n, 10)
+
+	dInt := new(big.Int)
+	dInt.SetString(d, 10)
+
+	sk.N_sk = nInt
+	sk.D_sk = dInt
 }
 
 //RSA Key generator
@@ -100,9 +139,9 @@ func calculateD(p *big.Int, q *big.Int) *big.Int {
 }
 
 // RSA Decryption method
-func Decrypt(ciphertext *big.Int, pKey SecretKey) *big.Int {
+func Decrypt(ciphertext *big.Int, sKey SecretKey) *big.Int {
 	temp := new(big.Int)
 	message := new(big.Int)
-	message.Mod(temp.Exp(ciphertext, pKey.D_sk, nil), pKey.N_sk)
+	message.Mod(temp.Exp(ciphertext, sKey.D_sk, nil), sKey.N_sk)
 	return message
 }
