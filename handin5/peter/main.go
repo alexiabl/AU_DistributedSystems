@@ -48,16 +48,23 @@ func handleConnection(conn net.Conn) {
 			switch message.ID {
 			case TRANSACTION_MESSAGE:
 				var transaction = message.Value.(SignedTransaction)
-				var transID = transaction.From + transaction.ID
+				var transID = transaction.ID
 
 				// If this transaction has already been sent, break
+				alreadySent := false
 				for i := 0; i < len(transactionsSent); i++ {
 					if transactionsSent[i] == transID {
+						alreadySent = true
 						break
 					}
 				}
+				if alreadySent {
+					break
+				}
 
-				handleTransaction(transaction)
+				if !handleTransaction(transaction) {
+					break
+				}
 
 				fmt.Println("[Got transaction]")
 				printArrow()
@@ -239,10 +246,16 @@ func registerPeersInLedger() {
 	}
 }
 
-func handleTransaction(trans SignedTransaction) {
-	ledger.SignedTransaction(&trans)
-	var transID = trans.From + trans.ID
-	transactionsSent = append(transactionsSent, transID)
+func handleTransaction(trans SignedTransaction) bool {
+	valid := ledger.SignedTransaction(&trans)
+
+	if !valid {
+		return false
+	}
+
+	fmt.Println("Addind trans ID:", trans.ID)
+	transactionsSent = append(transactionsSent, trans.ID)
+	return true
 }
 
 func broadcastSelf() {
@@ -262,7 +275,7 @@ func setupListeningServer() net.Listener {
 
 	// Generate address
 	fullAddress := address + ":" + port
-	fmt.Println("Listening on address:", fullAddress)
+	fmt.Println(fullAddress)
 
 	ownPeer = Peer{Address: fullAddress, Pk: pk.toString()}
 
@@ -304,6 +317,7 @@ func main() {
 
 	// Register gob interfaces - need for en-/decoding
 	gob.Register(Peer{})
+	gob.Register([]Peer{})
 	gob.Register(SignedTransaction{})
 
 	// Creates the ledger
@@ -344,7 +358,13 @@ func main() {
 			// List all peers in the peer list
 			if text == "list\n" {
 				for index, peer := range peers {
-					fmt.Println(strconv.Itoa(index+1) + ": " + peer.Address)
+					// Adding "(you)" after the local ip in the list
+					youStr := ""
+					if peer == ownPeer {
+						youStr = "(you)"
+					}
+
+					fmt.Println(strconv.Itoa(index+1)+": "+peer.Address, youStr)
 				}
 			}
 
@@ -362,29 +382,38 @@ func main() {
 			var splitMessage = strings.Split(text, " ")
 			if splitMessage[0] == "trans" {
 
-				if len(splitMessage) != 4 {
-					fmt.Println("Use:\ntrans <from> <to> <amount>")
+				if len(splitMessage) != 3 {
+					fmt.Println("Use:\ntrans <to IP> <amount>")
 				} else {
-					var from = splitMessage[1]
-					var to = splitMessage[2]
+					var from = ownPeer.Address
+					var to = splitMessage[1]
 
 					if from == to {
-						fmt.Println("From and to cannot be the same")
-					} else if !isPeerRegistered(from) && !isPeerRegistered(to) {
-						fmt.Println("<from> or <to> not found in peers")
+						fmt.Println("<to IP> needs to be someone else than yourself")
+					} else if !isPeerRegistered(to) {
+						fmt.Println("<to IP> not found in peers")
 					} else {
-						var amountStr = strings.Replace(splitMessage[3], "\n", "", -1)
-						var amount, _ = strconv.Atoi(amountStr)
-						var id = pk.toString() + "-" + strconv.Itoa(transactionID)
+						sender := ownPeer
+						receiver := GetPeerFromIP(to)
+						amountStr := strings.Replace(splitMessage[2], "\n", "", -1)
+						amount, _ := strconv.Atoi(amountStr)
+						id := sender.Address + "-" + strconv.Itoa(transactionID)
 						transactionID++
-						var transaction = SignedTransaction{ID: id, From: from, To: to, Amount: amount}
-						var message = Message{ID: TRANSACTION_MESSAGE, Value: transaction}
 
-						handleTransaction(transaction)
+						transaction := SignedTransaction{ID: id, From: sender.Pk, To: receiver.Pk, Amount: amount}
 
-						fmt.Println("Sending transaction with id ", id, " from ", from, " to ", to, " for ", amount)
+						messageForSigning := GenerateMessageFromTransaction(&transaction)
 
-						outboundMessages <- message
+						signature := Sign(messageForSigning, sk)
+						transaction.Signature = signature.String()
+
+						if handleTransaction(transaction) {
+							var message = Message{ID: TRANSACTION_MESSAGE, Value: transaction}
+
+							fmt.Println("Sending transaction with id ", id, " from ", from, " to ", to, " for ", amount)
+
+							outboundMessages <- message
+						}
 					}
 				}
 			}

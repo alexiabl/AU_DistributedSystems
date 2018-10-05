@@ -27,7 +27,7 @@ func (sk SecretKey) toString() string {
 	return sk.N_sk.String() + ":" + sk.D_sk.String()
 }
 
-func (pk PublicKey) fromString(str string) {
+func GeneratePublicKeyFromString(str string) PublicKey {
 	parts := strings.Split(str, ":")
 	n := parts[0]
 	e := parts[1]
@@ -40,9 +40,11 @@ func (pk PublicKey) fromString(str string) {
 
 	pk.N_pk = nInt
 	pk.E_pk = eInt
+
+	return PublicKey{N_pk: nInt, E_pk: eInt}
 }
 
-func (sk SecretKey) fromString(str string) {
+func GenerateSecretKeyFromString(str string) SecretKey {
 	parts := strings.Split(str, ":")
 	n := parts[0]
 	d := parts[1]
@@ -53,8 +55,7 @@ func (sk SecretKey) fromString(str string) {
 	dInt := new(big.Int)
 	dInt.SetString(d, 10)
 
-	sk.N_sk = nInt
-	sk.D_sk = dInt
+	return SecretKey{N_sk: nInt, D_sk: dInt}
 }
 
 //RSA Key generator
