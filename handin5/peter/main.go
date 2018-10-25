@@ -375,7 +375,44 @@ func main() {
 
 			// List all possible commands
 			if text == "help\n" {
-				fmt.Println("All available commands are: quit, list, status, help, trans")
+				fmt.Println("All available commands are: quit, list, status, help, trans, testSignature")
+			}
+
+			if text == "testSignature\n" {
+				fmt.Println("Sending a signed transaction with an invalid signature")
+
+				if len(peers) < 2 {
+					fmt.Println("Not enough peers in the network")
+					continue
+				}
+
+				var sender = ownPeer
+				var receiver Peer
+
+				for i := 0; i < len(peers); i++ {
+					if peers[i] != ownPeer {
+						receiver = peers[i]
+						break
+					}
+				}
+
+				amount := 123
+				id := sender.Address + "-" + strconv.Itoa(transactionID)
+				transactionID++
+
+				transaction := SignedTransaction{ID: id, From: sender.Pk, To: receiver.Pk, Amount: amount}
+
+				// Switched transaction.From and transaction.To, which will give another message and therefore a differnet signature, than it is supposed to be
+				messageForSigning := []byte(transaction.To + transaction.From + id + string(amount))
+
+				signature := Sign(messageForSigning, sk)
+				transaction.Signature = signature.String()
+
+				if handleTransaction(transaction) {
+					fmt.Println("The transaction was accepted as real")
+				} else {
+					fmt.Println("The transaction wasn't accepted")
+				}
 			}
 
 			// Make a transaction
