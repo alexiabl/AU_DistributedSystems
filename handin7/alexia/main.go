@@ -101,10 +101,37 @@ func testSignatureSpeed() {
 	fmt.Println("Signing time (average):", average)
 }
 
+func testSoftwareWallet(){
+	pwd := GetPassword()
+	Generate("softwareWalletTest",pwd)
+	message := "This is a message"
+	pwd = GetPassword()
+	signature := Sign("softwareWalletTest", pwd,[]byte(message))
+	fmt.Println(signature)
+}
+
+func testGenerate() string {
+	pwd := GetPassword()
+	fmt.Print("Enter the filename: ")
+	var filename string
+	fmt.Scan(&filename)
+	pk := Generate("text/"+filename,pwd)
+	return pk
+}
+
+func testSign (pk string){
+	msg := "This is a test message"
+	pwd := GetPassword()
+	fmt.Print("Enter the filename: ")
+	var filename string
+	fmt.Scan(&filename)
+	signature := Sign("text/"+filename, pwd,[]byte(msg))
+	public_key := GeneratePublicKeyFromString(pk)
+	signature_ok := verify([]byte(msg),signature,public_key)
+	fmt.Println("Signature OK: ",signature_ok)
+}
+
 func main() {
-	basicVerification()
-
-	testHashSpeed()
-
-	testSignatureSpeed()
+	pk := testGenerate()
+	testSign(pk)
 }
