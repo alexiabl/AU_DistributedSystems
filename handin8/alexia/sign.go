@@ -6,7 +6,7 @@ import (
 	"math/big"
 )
 
-func sign(message []byte, sk SecretKey) *big.Int {
+func Sign(message []byte, sk SecretKey) *big.Int {
 
 	// Signing:
 	// s = S(m) = m ^ d mod n
@@ -25,7 +25,7 @@ func sign(message []byte, sk SecretKey) *big.Int {
 	return signedInt
 }
 
-func verify(message []byte, signature *big.Int, pk PublicKey) bool {
+func Verify(message []byte, signature *big.Int, pk PublicKey) bool {
 
 	// Verifying:
 	// m = s ^ e mod n

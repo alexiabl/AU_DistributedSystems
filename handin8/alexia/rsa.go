@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"strings"
 )
 
 var e *big.Int = big.NewInt(3)
@@ -16,6 +17,45 @@ type PublicKey struct {
 type SecretKey struct {
 	N_sk *big.Int
 	D_sk *big.Int
+}
+
+func (pk PublicKey) toString() string {
+	return pk.N_pk.String() + ":" + pk.E_pk.String()
+}
+
+func (sk SecretKey) toString() string {
+	return sk.N_sk.String() + ":" + sk.D_sk.String()
+}
+
+func GeneratePublicKeyFromString(str string) PublicKey {
+	parts := strings.Split(str, ":")
+	n := parts[0]
+	e := parts[1]
+
+	nInt := new(big.Int)
+	nInt.SetString(n, 10)
+
+	eInt := new(big.Int)
+	eInt.SetString(e, 10)
+
+	pk.N_pk = nInt
+	pk.E_pk = eInt
+
+	return PublicKey{N_pk: nInt, E_pk: eInt}
+}
+
+func GenerateSecretKeyFromString(str string) SecretKey {
+	parts := strings.Split(str, ":")
+	n := parts[0]
+	d := parts[1]
+
+	nInt := new(big.Int)
+	nInt.SetString(n, 10)
+
+	dInt := new(big.Int)
+	dInt.SetString(d, 10)
+
+	return SecretKey{N_sk: nInt, D_sk: dInt}
 }
 
 //RSA Key generator
