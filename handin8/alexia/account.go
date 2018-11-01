@@ -5,6 +5,8 @@ import (
 	"math/big"
 	"reflect"
 	"sync"
+	"bytes"
+	"encoding/gob"
 )
 
 type Ledger struct {
@@ -39,6 +41,7 @@ type Message struct {
 type Block struct {
 	ID	int
 	Transactions []string
+	Signature	 *big.Int
 }
 
 type Sequencer struct {
@@ -51,8 +54,6 @@ const TRANSACTION_MESSAGE = "transMsg"                 // When the message conta
 const NEW_PEER_MESSAGE = "newPeerMsg"                  // When the message contains a new peer
 const REQUEST_PEER_LIST_MESSAGE = "requestPeerListMsg" // When the message requests the list of peers
 const PEER_LIST_MESSAGE = "peerListMsg"                // When the message contains the list of peers
-
-//@TODO: handle following messages
 const BLOCK_MESSAGE = "blockMsg"							   // When a block is sent
 const REQUEST_SEQUENCER_MESSAGE = "requestSeqMsg"				   // Ask who is the sequencer
 const SEQUENCER_MESSAGE = "SeqMsg"							// Contains the sequencer key
@@ -85,6 +86,16 @@ func (l *Ledger) SignedTransaction(t *SignedTransaction) bool {
 
 func GenerateMessageFromTransaction(t *SignedTransaction) []byte {
 	return []byte(t.From + t.To + t.ID + string(t.Amount))
+}
+
+func GenerateMessageFromBlock(block Block) ([]byte,error) {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(block)
+	if err != nil {
+        return nil, err
+    }
+    return buf.Bytes(), nil
 }
 
 func (l *Ledger) InitializeAccount(peer Peer) {

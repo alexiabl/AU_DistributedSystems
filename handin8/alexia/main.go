@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func handleConnection(conn net.Conn) {
@@ -62,15 +63,16 @@ func handleConnection(conn net.Conn) {
 					break
 				}
 				//TODO: instead of this add transaction to transaction list
-				if !handleTransaction(transaction) {
-					break
-				}
+				//if !handleTransaction(transaction) {
+				//	break
+				//}
 				transactionsReceived = append(transactionsReceived,transID)
+				fmt.Println("Transactions received = ",string(len(transactionsReceived)))
 
 				fmt.Println("[Got transaction]")
 				printArrow()
 
-				outboundMessages <- message
+				//outboundMessages <- message
 				break
 			case NEW_PEER_MESSAGE:
 				var peer = message.Value.(Peer)
@@ -95,20 +97,29 @@ func handleConnection(conn net.Conn) {
 			
 			case BLOCK_MESSAGE:
 				var block = message.Value.(Block)
-				if isBlockValid(block) {
-					currentBlock = block
-					for i := 0; i<=len(block.Transactions); i++ {
-						trans := block.Transactions[i]
-						for j:= 0; j<=len(transactionsReceived); j++ {
-							if trans == transactionsReceived[j] {
-								//handle transaction
+				fmt.Println("Received block")
+				//verify the signed block with the sequencer pk
+				var msg_block, _ = GenerateMessageFromBlock(block)
+				if (Verify(msg_block,block.Signature,sequencerPk)){
+					if isBlockValid(block) {
+						currentBlock = block
+						fmt.Println("Number of transactions in block: "+string(len(block.Transactions)))
+						for i := 0; i<=len(block.Transactions); i++ {
+							trans := block.Transactions[i]
+							for j:= 0; j<=len(transactionsReceived); j++ {
+								if trans == transactionsReceived[j] {
+									//handle transaction
+									//handle error when transaction has not yet been received
+									fmt.Println("Handling transaction")
+								}
 							}
 						}
 					}
-
 				}
+
 			case REQUEST_SEQUENCER_MESSAGE:
-				var response = Message{ID: SEQUENCER_MESSAGE, Value: sequencerIP}
+				seq_Pk := sequencerPk.toString()
+				var response = Message{ID: SEQUENCER_MESSAGE, Value: seq_Pk}
 				sendMessage(conn, response)
 				break
 			
@@ -126,6 +137,7 @@ func isBlockValid(block Block) bool {
 	return valid
 }
 
+
 func listenForConnections(ln net.Listener) {
 	defer ln.Close()
 
@@ -140,7 +152,6 @@ func listenForConnections(ln net.Listener) {
 func broadcastMessages() {
 	for {
 		var message = <-outboundMessages
-
 		for i := 0; i < len(connections); i++ {
 			var conn = connections[i]
 			sendMessage(conn, message)
@@ -162,7 +173,6 @@ func isPeerRegistered(address string) bool {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -179,19 +189,39 @@ func getOwnAddress() string {
 			return ipv4.String()
 		}
 	}
-
 	return "127.0.0.1"
 }
 
-func startSequencer(ip string) {
+//send secret key 
+func startSequencer(sk SecretKey) {
+	blockCounter := 0
 	fmt.Println("Starting sequencer")
-	n, d := KeyGen(2000)
-	pk = generatePublicKey(n, e)
-	sk = generateSecretKey(n, d)
+	//every 10 seconds
+	var block = Block{}
+	ticker := time.NewTicker(10 * time.Second)
+    for {
+    select {
+	case <- ticker.C:
+		fmt.Println("10 seconds have passed")
+		if (len(transactionsReceived) == 0){
+			fmt.Println("No transactions yet")
+		}else {
+			block.ID = blockCounter
+			fmt.Println("Creating a new block: ",block.ID)
+			block.Transactions = transactionsReceived
+			msg_block, _ := GenerateMessageFromBlock(block)
+			signature := Sign(msg_block,sk)
+			block.Signature = signature
+			blockCounter++
+			fmt.Println("Sending a new block")
+			var blockMessage = Message{ID:BLOCK_MESSAGE, Value:block}
+			transactionsReceived = transactionsReceived[:0]
+			outboundMessages <- blockMessage
+		}
+		
+	}
+}
 
-	sequencerKey.Pk = pk.toString()
-	sequencerKey.Sk = sk.toString()
-	sequencerKey.Ip = ip
 
 }
 
@@ -216,8 +246,12 @@ func getPeerList() {
 	if err != nil {
 		fmt.Println("No peer found or invalid IP/Port")
 		fmt.Println("Starting a new network")
-		startSequencer(ip)
-		//TODO: start sequencer go routine? i am sequencer
+		//TODO: start sequencer go routine 
+		// Generating sequencer key pair
+		n, d := KeyGen(2000)
+		pk = generatePublicKey(n, e)
+		sk = generateSecretKey(n, d)
+		go startSequencer(sk)
 	} else {
 		fmt.Println("Connection successful")
 
@@ -227,32 +261,48 @@ func getPeerList() {
 		var message = Message{ID: REQUEST_PEER_LIST_MESSAGE}
 		sendMessage(conn, message)
 
-		//Request Sequencer
-		var reqSequencer = Message{ID: REQUEST_SEQUENCER_MESSAGE}
-		sendMessage(conn, reqSequencer)
-
 		// Wait for response
 		// Does this handle both messages?
 		var newMessage = &Message{}
 		var dec = gob.NewDecoder(conn)
-		var err = dec.Decode(newMessage)
-		if err != nil {
-			fmt.Println("Error while reading peer list: ", err.Error())
-			return
-		} else if newMessage.ID != PEER_LIST_MESSAGE  && newMessage.ID != SEQUENCER_MESSAGE {
-			fmt.Println("Got an unexpected response from other peer: " + newMessage.ID)
+		var err1 = dec.Decode(newMessage)
+		if err1 != nil {
+			fmt.Println("Error while reading peer list: ", err1.Error())
 			return
 		} else if newMessage.ID == PEER_LIST_MESSAGE {
 			var list = newMessage.Value.([]Peer)
 			fmt.Println("[Got list of peers]")
 			peers = list
-		} else if newMessage.ID == SEQUENCER_MESSAGE {
-			var seqIP = newMessage.Value.(string)
-			fmt.Println("[Got Sequencer IP]")
-			sequencerIP = seqIP
+		} else if newMessage.ID != PEER_LIST_MESSAGE {
+			fmt.Println("Got an unexpected response from other peer: "+newMessage.ID)
+			return
 		}
+
+		requestSequencer(conn)
 	}
 }
+
+func requestSequencer(conn net.Conn){
+		var reqSequencer = Message{ID: REQUEST_SEQUENCER_MESSAGE}
+		sendMessage(conn, reqSequencer)
+		// Wait for response
+		var sequencerMessage = &Message{}
+		var dec2 = gob.NewDecoder(conn)
+		var err2 = dec2.Decode(sequencerMessage)
+		if err2 != nil {
+			fmt.Println("Error while reading sequencer info: ", err2.Error())
+			return
+		}else if sequencerMessage.ID == SEQUENCER_MESSAGE {
+			var seqPk = sequencerMessage.Value.(string)
+			sequencerPk = GeneratePublicKeyFromString(seqPk)
+			fmt.Println("Got Sequencer PK")
+		}  else if sequencerMessage.ID != SEQUENCER_MESSAGE {
+			fmt.Println("Got an unexpected response from other peer: "+ sequencerMessage.ID)
+			return
+		}
+	}
+	//Request Sequencer
+	
 
 func connectToPeers() {
 
@@ -366,11 +416,11 @@ var transactionsSent = []string{}         // A list of all received messages
 var peers = []Peer{}                      // List of all peers in the network
 var ownPeer Peer                          // The id of this peer (public key as string)
 var transactionsReceived = []string{}	  // List of the transactions id's received
+var transactionsChannel = make(chan []string)
 
 var pk PublicKey
 var sk SecretKey
-var sequencerKey Sequencer
-var sequencerIP string 
+var sequencerPk PublicKey
 var currentBlock Block
 
 var transactionID = 0
@@ -472,6 +522,10 @@ func main() {
 				transactionID++
 
 				transaction := SignedTransaction{ID: id, From: sender.Pk, To: receiver.Pk, Amount: amount}
+
+				//Added to transactions received
+				transactionsReceived = append(transactionsReceived, transaction.ID)
+				transactionsChannel <- transactionsReceived
 
 				// Switched transaction.From and transaction.To, which will give another message and therefore a differnet signature, than it is supposed to be
 				messageForSigning := []byte(transaction.To + transaction.From + id + string(amount))
