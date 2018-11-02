@@ -103,7 +103,7 @@ func GenerateMessageFromBlock(block Block) ([]byte,error) {
 func (l *Ledger) InitializeAccount(peer Peer) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	l.Accounts[peer.Pk] = 0
+	l.Accounts[peer.Pk] = 100
 }
 
 func (l *Ledger) PrintStatus() {
@@ -132,7 +132,6 @@ func GetPeerFromPK(str string) *Peer {
 func GetPeerFromIP(ip string) *Peer {
 	for i := 0; i < len(peers); i++ {
 		if ip == peers[i].Address {
-			fmt.Println("Peer pk from IP = "+peers[i].Pk)
 			return &peers[i]
 		}
 	}

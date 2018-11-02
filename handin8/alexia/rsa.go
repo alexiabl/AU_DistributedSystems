@@ -38,8 +38,8 @@ func GeneratePublicKeyFromString(str string) PublicKey {
 	eInt := new(big.Int)
 	eInt.SetString(e, 10)
 
-	pk.N_pk = nInt
-	pk.E_pk = eInt
+	//pk.N_pk = nInt
+	//pk.E_pk = eInt
 
 	return PublicKey{N_pk: nInt, E_pk: eInt}
 }
