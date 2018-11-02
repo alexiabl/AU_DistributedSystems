@@ -48,6 +48,7 @@ func handleConnection(conn net.Conn) {
 
 			switch message.ID {
 			case TRANSACTION_MESSAGE: //when we receive a transaction
+				fmt.Println("Received transaction")
 				var transaction = message.Value.(SignedTransaction)
 				var transID = transaction.ID
 
@@ -66,18 +67,16 @@ func handleConnection(conn net.Conn) {
 				//if !handleTransaction(transaction) {
 				//	break
 				//}
-				transactionsReceived = append(transactionsReceived,transID)
+				transactionsReceived = append(transactionsReceived,transaction)
 				fmt.Println("Transactions received = ",string(len(transactionsReceived)))
 
 				fmt.Println("[Got transaction]")
 				printArrow()
 
-				//outboundMessages <- message
+				outboundMessages <- message
 				break
 			case NEW_PEER_MESSAGE:
 				var peer = message.Value.(Peer)
-
-				//@TODO: need to inform who is the sequencer as well
 
 				// If the peer is already registered
 				if isPeerRegistered(peer.Address) {
@@ -107,10 +106,17 @@ func handleConnection(conn net.Conn) {
 						for i := 0; i<=len(block.Transactions); i++ {
 							trans := block.Transactions[i]
 							for j:= 0; j<=len(transactionsReceived); j++ {
-								if trans == transactionsReceived[j] {
+								if trans == transactionsReceived[j].ID {
+									currTransaction := transactionsReceived[j]
 									//handle transaction
+									// verify if amount could be less than what is in sending account -> ignore
 									//handle error when transaction has not yet been received
-									fmt.Println("Handling transaction")
+									fmt.Println("Handling transaction received")
+									if (!handleTransaction(currTransaction)){
+										fmt.Println("Error handling transaction")
+										break
+									}
+
 								}
 							}
 						}
@@ -192,7 +198,6 @@ func getOwnAddress() string {
 	return "127.0.0.1"
 }
 
-//send secret key 
 func startSequencer(sk SecretKey) {
 	blockCounter := 0
 	fmt.Println("Starting sequencer")
@@ -208,21 +213,24 @@ func startSequencer(sk SecretKey) {
 		}else {
 			block.ID = blockCounter
 			fmt.Println("Creating a new block: ",block.ID)
-			block.Transactions = transactionsReceived
+			transactionIDs := []string{}
+			for i := 0; i<len(transactionsReceived); i++ {
+				transactionIDs = append(transactionIDs, transactionsReceived[i].ID)
+			}
+			block.Transactions = transactionIDs
 			msg_block, _ := GenerateMessageFromBlock(block)
 			signature := Sign(msg_block,sk)
 			block.Signature = signature
 			blockCounter++
 			fmt.Println("Sending a new block")
 			var blockMessage = Message{ID:BLOCK_MESSAGE, Value:block}
+			//Do i need to empty the list again?
 			transactionsReceived = transactionsReceived[:0]
 			outboundMessages <- blockMessage
 		}
 		
 	}
 }
-
-
 }
 
 func getPeerList() {
@@ -251,6 +259,9 @@ func getPeerList() {
 		n, d := KeyGen(2000)
 		pk = generatePublicKey(n, e)
 		sk = generateSecretKey(n, d)
+		//ownPeer.Pk = pk.toString()
+		sequencerPk = pk
+		fmt.Println("Sequencer PK = ",sequencerPk)
 		go startSequencer(sk)
 	} else {
 		fmt.Println("Connection successful")
@@ -262,7 +273,6 @@ func getPeerList() {
 		sendMessage(conn, message)
 
 		// Wait for response
-		// Does this handle both messages?
 		var newMessage = &Message{}
 		var dec = gob.NewDecoder(conn)
 		var err1 = dec.Decode(newMessage)
@@ -295,10 +305,11 @@ func requestSequencer(conn net.Conn){
 		}else if sequencerMessage.ID == SEQUENCER_MESSAGE {
 			var seqPk = sequencerMessage.Value.(string)
 			sequencerPk = GeneratePublicKeyFromString(seqPk)
-			fmt.Println("Got Sequencer PK")
+			fmt.Println("Got Sequencer PK = "+sequencerPk.toString())
 		}  else if sequencerMessage.ID != SEQUENCER_MESSAGE {
 			fmt.Println("Got an unexpected response from other peer: "+ sequencerMessage.ID)
 			return
+	
 		}
 	}
 	//Request Sequencer
@@ -352,13 +363,14 @@ func registerPeersInLedger() {
 }
 
 func handleTransaction(trans SignedTransaction) bool {
+	fmt.Println("Handling transaction")
 	valid := ledger.SignedTransaction(&trans)
 
 	if !valid {
+		fmt.Println("Transaction not valid")
 		return false
 	}
-
-	fmt.Println("Addind trans ID:", trans.ID)
+	fmt.Println("Adding trans ID:", trans.ID)
 	transactionsSent = append(transactionsSent, trans.ID)
 	return true
 }
@@ -415,7 +427,7 @@ var connections = []net.Conn{}            // A list of all current connections
 var transactionsSent = []string{}         // A list of all received messages
 var peers = []Peer{}                      // List of all peers in the network
 var ownPeer Peer                          // The id of this peer (public key as string)
-var transactionsReceived = []string{}	  // List of the transactions id's received
+var transactionsReceived = []SignedTransaction{}	  // List of the transactions id's received
 var transactionsChannel = make(chan []string)
 
 var pk PublicKey
@@ -432,6 +444,8 @@ func main() {
 	n, d := KeyGen(2000)
 	pk = generatePublicKey(n, e)
 	sk = generateSecretKey(n, d)
+	ownPeer.Pk = pk.toString()
+	fmt.Println("My PK = "+ownPeer.Pk)
 
 	// Register gob interfaces - need for en-/decoding
 	gob.Register(Peer{})
@@ -524,8 +538,8 @@ func main() {
 				transaction := SignedTransaction{ID: id, From: sender.Pk, To: receiver.Pk, Amount: amount}
 
 				//Added to transactions received
-				transactionsReceived = append(transactionsReceived, transaction.ID)
-				transactionsChannel <- transactionsReceived
+				transactionsReceived = append(transactionsReceived, transaction)
+				//transactionsChannel <- transactionsReceived
 
 				// Switched transaction.From and transaction.To, which will give another message and therefore a differnet signature, than it is supposed to be
 				messageForSigning := []byte(transaction.To + transaction.From + id + string(amount))
@@ -547,7 +561,9 @@ func main() {
 				if len(splitMessage) != 3 {
 					fmt.Println("Use:\ntrans <to IP> <amount>")
 				} else {
+					fmt.Println("Transaction send begin")
 					var from = ownPeer.Address
+					fmt.Println("transaction from = "+from)
 					var to = splitMessage[1]
 
 					if from == to {
@@ -555,13 +571,18 @@ func main() {
 					} else if !isPeerRegistered(to) {
 						fmt.Println("<to IP> not found in peers")
 					} else {
+						fmt.Println("About to start transaction")
 						sender := ownPeer
+						//What if the receiver is the Sequencer?
 						receiver := GetPeerFromIP(to)
 						amountStr := strings.Replace(splitMessage[2], "\n", "", -1)
 						amount, _ := strconv.Atoi(amountStr)
 						id := sender.Address + "-" + strconv.Itoa(transactionID)
 						transactionID++
-
+						fmt.Println("Making transaction")
+						if (sender.Pk == receiver.Pk){
+							fmt.Println("sender and receiver pk are the same")
+						}
 						transaction := SignedTransaction{ID: id, From: sender.Pk, To: receiver.Pk, Amount: amount}
 
 						messageForSigning := GenerateMessageFromTransaction(&transaction)

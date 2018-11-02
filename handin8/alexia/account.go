@@ -76,9 +76,11 @@ func (l *Ledger) SignedTransaction(t *SignedTransaction) bool {
 	validSignature := Verify(message, signature, pk)
 
 	if validSignature {
-		l.Accounts[t.From] -= t.Amount
-		l.Accounts[t.To] += t.Amount
-		return true
+		if l.Accounts[t.From] - t.Amount > 0 {
+			l.Accounts[t.From] -= t.Amount
+			l.Accounts[t.To] += t.Amount
+			return true
+		}
 	}
 
 	return false
@@ -130,6 +132,7 @@ func GetPeerFromPK(str string) *Peer {
 func GetPeerFromIP(ip string) *Peer {
 	for i := 0; i < len(peers); i++ {
 		if ip == peers[i].Address {
+			fmt.Println("Peer pk from IP = "+peers[i].Pk)
 			return &peers[i]
 		}
 	}
