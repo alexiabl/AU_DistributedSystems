@@ -5,8 +5,7 @@ import (
 	"math/big"
 	"reflect"
 	"sync"
-	"bytes"
-	"encoding/gob"
+	"strconv"
 )
 
 type Ledger struct {
@@ -91,13 +90,11 @@ func GenerateMessageFromTransaction(t *SignedTransaction) []byte {
 }
 
 func GenerateMessageFromBlock(block Block) ([]byte,error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(block)
-	if err != nil {
-        return nil, err
-    }
-    return buf.Bytes(), nil
+	idBytes := []byte(strconv.Itoa(block.ID))
+	for i := 0 ; i<len(block.Transactions); i++ {
+		idBytes = append(idBytes,[]byte(block.Transactions[i])...)
+	}
+    return idBytes, nil
 }
 
 func (l *Ledger) InitializeAccount(peer Peer) {
