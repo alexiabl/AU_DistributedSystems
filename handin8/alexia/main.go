@@ -50,10 +50,9 @@ func handleConnection(conn net.Conn) {
 
 			switch message.ID {
 			case TRANSACTION_MESSAGE: //when we receive a transaction
-				fmt.Println("Received transaction")
 				var transaction = message.Value.(SignedTransaction)
 				var transID = transaction.ID
-				fmt.Println("Transaction ID = "+transID)
+				//fmt.Println("Transaction ID = "+transID)
 
 				// If this transaction has already been sent, break
 				alreadySent := false
@@ -68,10 +67,6 @@ func handleConnection(conn net.Conn) {
 				}
 				transactionsSent = append(transactionsSent,transID)
 
-				//TODO: instead of this add transaction to transaction list
-				//if !handleTransaction(transaction) {
-				//	break
-				//}
 				transactionLock.Lock()
 				transactionsReceived = append(transactionsReceived,transaction)
 				transactionLock.Unlock()
@@ -110,32 +105,29 @@ func handleConnection(conn net.Conn) {
 				sendMessage(conn, response)
 				break
 			
-			//TODO: add cases for new messages
 		}
 	}
 }
 }
 
+
 func handleBlock(block Block){
-	fmt.Println("Received block")
-	//verify the signed block with the sequencer pk
+	//Verify the signed block with the sequencer pk
 	var msg_block, _ = GenerateMessageFromBlock(block)
 	if (Verify(msg_block,block.Signature,sequencerPk)){
 		if isBlockValid(block) {
 			currentBlockIndex = block.ID
-			fmt.Println("Number of transactions in block: ",len(block.Transactions))
 			for i := 0; i<len(block.Transactions); i++ {
 				trans := block.Transactions[i]
 				for j:= 0; j<len(transactionsReceived); j++ {
 					if trans == transactionsReceived[j].ID {
 						currTransaction := transactionsReceived[j]
-						//handle transaction
-						// verify if amount could be less than what is in sending account -> ignore
-						//handle error when transaction has not yet been received
-						fmt.Println("Handling transaction received")
-						if (!handleTransaction(currTransaction)){
-							fmt.Println("Error handling transaction")
+						if (handleTransaction(currTransaction)){
+							fmt.Println("Success!")
+							printArrow()
 							break
+						}else{
+							fmt.Println("Transaction: "+currTransaction.ID+" failed")
 						}
 
 					}
@@ -218,9 +210,7 @@ func startSequencer(s_sk SecretKey) {
     select {
 	case <- ticker.C:
 		transactionLock.Lock()
-		if (len(transactionsReceived) == 0){
-			fmt.Println("No transactions yet")
-		}else {
+		if (len(transactionsReceived) > 0){
 			block.ID = blockCounter
 			fmt.Println("Creating a new block: ",block.ID)
 			transactionIDs := []string{}
@@ -233,10 +223,7 @@ func startSequencer(s_sk SecretKey) {
 			block.Signature = signature
 			
 			blockCounter++
-			fmt.Println("Sending a new block")
 			var blockMessage = Message{ID:BLOCK_MESSAGE, Value:block}
-			//Do i need to empty the list again?
-			//concurrency
 			handleBlock(block)
 			transactionsReceived = transactionsReceived[:0]
 			outboundMessages <- blockMessage
@@ -267,7 +254,7 @@ func getPeerList() {
 	if err != nil {
 		fmt.Println("No peer found or invalid IP/Port")
 		fmt.Println("Starting a new network")
-		
+
 		// Generating sequencer key pair
 		n, d := KeyGen(2000)
 		s_pk := generatePublicKey(n, e)
@@ -378,9 +365,11 @@ func handleTransaction(trans SignedTransaction) bool {
 
 	if !valid {
 		fmt.Println("Transaction not valid")
+		printArrow()
 		return false
 	}
 	fmt.Println("Adding trans ID:", trans.ID)
+	printArrow()
 	return true
 }
 
@@ -539,9 +528,6 @@ func main() {
 
 				transaction := SignedTransaction{ID: id, From: sender.Pk, To: receiver.Pk, Amount: amount}
 
-				//Added to transactions received
-				transactionsReceived = append(transactionsReceived, transaction)
-
 				// Switched transaction.From and transaction.To, which will give another message and therefore a differnet signature, than it is supposed to be
 				messageForSigning := []byte(transaction.To + transaction.From + id + string(amount))
 
@@ -586,8 +572,6 @@ func main() {
 
 						var message = Message{ID: TRANSACTION_MESSAGE, Value: transaction}
 
-						fmt.Println("Sending transaction with id ", id, " from ", from, " to ", to, " for ", amount)
-
 						outboundMessages <- message
 					}
 				}
@@ -597,13 +581,3 @@ func main() {
 		}
 	}
 }
-
-
-// new message for sequencer that added block
-// every peer has list of transactions received and sequencer will have list 
-//each peer has sequencer key pair stored
-//block typed message should be signedby sequencer public key
-//every 10 seconds a block is sent with the transactions created during those 10 seconds, the ids are added to the block list of ids transactions
-// block is signed by the sequencer - sequencer routine
-//when a peer receives a block it checks if it is valid, if it is valid (block number+1 = my block) then it executes all transactions whose ids are on the block received and removes them from the list of transactions. iterate over block trans ids and iterate over list of transactions adn if ids match executre and remove from list.
-// also now we need to validate if sending account becomes negative for each transaction we are going to process.

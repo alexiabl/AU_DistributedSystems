@@ -56,9 +56,6 @@ const PEER_LIST_MESSAGE = "peerListMsg"                // When the message conta
 const BLOCK_MESSAGE = "blockMsg"							   // When a block is sent
 const REQUEST_SEQUENCER_MESSAGE = "requestSeqMsg"				   // Ask who is the sequencer
 const SEQUENCER_MESSAGE = "SeqMsg"							// Contains the sequencer key
-//with a list of string
-//block object with block number and list of strings of transaction ids
-//when you connect first request the peer list and then request the sequencer message and you receive sequencer message
 
 func (l *Ledger) SignedTransaction(t *SignedTransaction) bool {
 	l.lock.Lock()
@@ -100,7 +97,7 @@ func GenerateMessageFromBlock(block Block) ([]byte,error) {
 func (l *Ledger) InitializeAccount(peer Peer) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	l.Accounts[peer.Pk] = 100
+	l.Accounts[peer.Pk] = 1000
 }
 
 func (l *Ledger) PrintStatus() {

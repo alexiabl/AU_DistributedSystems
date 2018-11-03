@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"math/big"
-	"fmt"
 )
 
 func Sign(message []byte, sk SecretKey) *big.Int {
@@ -40,7 +39,6 @@ func Verify(message []byte, signature *big.Int, pk PublicKey) bool {
 	sha.Write(message)
 	hash := sha.Sum(nil)
 	valid := (bytes.Compare(hash, decSignBytes) == 0)
-	fmt.Println("Valid = ",valid)
 	// Return whether the decrypted signature matches the sha of the message
 	return valid
 }
