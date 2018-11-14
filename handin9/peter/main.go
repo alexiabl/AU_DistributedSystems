@@ -6,136 +6,33 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sort"
-	"strconv"
+	"regexp"
 	"strings"
 )
 
-func handleConnection(conn net.Conn) {
-	defer conn.Close()
+var networks = []Network{}
 
-	connections = append(connections, conn)
+func createClient(ip string, pk *PublicKey, sk *SecretKey) {
 
-	otherEnd := conn.RemoteAddr().String()
+	client := Client{}
+	client.Initialize(ip, pk, sk)
 
-	for {
-		var decoder = gob.NewDecoder(conn)
-		var message = Message{}
-		var err = decoder.Decode(&message)
+	// Check if the client connects to an already existing network
+	for i := 0; i < len(networks); i++ {
+		network := networks[i]
 
-		if err != nil {
-			fmt.Println("Ending session with ", otherEnd)
-			printArrow()
-
-			// Finding the index of conn in connections
-			index := -1
-
-			for connIndex, tempConn := range connections {
-				if conn == tempConn {
-					index = connIndex
-					break
-				}
-			}
-
-			// Remove the connection from the array
-			if index != -1 {
-				connections = append(connections[:index], connections[index+1:]...)
-			}
-
+		if network.ContainsClientWithIP(ip) {
+			network.AddClient(client)
+			fmt.Println("[Added client to existing network]")
 			return
-		} else {
-
-			switch message.ID {
-			case TRANSACTION_MESSAGE:
-				var transaction = message.Value.(SignedTransaction)
-				var transID = transaction.ID
-
-				// If this transaction has already been sent, break
-				alreadySent := false
-				for i := 0; i < len(transactionsSent); i++ {
-					if transactionsSent[i] == transID {
-						alreadySent = true
-						break
-					}
-				}
-				if alreadySent {
-					break
-				}
-
-				if !handleTransaction(transaction) {
-					break
-				}
-
-				fmt.Println("[Got transaction]")
-				printArrow()
-
-				outboundMessages <- message
-				break
-			case NEW_PEER_MESSAGE:
-				var peer = message.Value.(Peer)
-
-				// If the peer is already registered
-				if isPeerRegistered(peer.Address) {
-					break
-				}
-
-				peers = append(peers, peer)
-				ledger.InitializeAccount(peer)
-				sortPeers()
-
-				outboundMessages <- message
-				break
-			case REQUEST_PEER_LIST_MESSAGE:
-				var response = Message{ID: PEER_LIST_MESSAGE, Value: peers}
-				sendMessage(conn, response)
-				break
-			}
-		}
-	}
-}
-
-func listenForConnections(ln net.Listener) {
-	defer ln.Close()
-
-	for {
-		conn, _ := ln.Accept()
-		fmt.Println("Got a new connection ", conn.RemoteAddr())
-		printArrow()
-		go handleConnection(conn)
-	}
-}
-
-func broadcastMessages() {
-	for {
-		var message = <-outboundMessages
-
-		for i := 0; i < len(connections); i++ {
-			var conn = connections[i]
-			sendMessage(conn, message)
-		}
-	}
-}
-
-func sendMessage(conn net.Conn, msg Message) {
-	var enc = gob.NewEncoder(conn)
-	var err = enc.Encode(&msg)
-	if err != nil {
-		fmt.Println("Got error when sending message: ", err.Error())
-	}
-}
-
-func isPeerRegistered(address string) bool {
-	for i := 0; i < len(peers); i++ {
-		if peers[i].Address == address {
-			return true
 		}
 	}
 
-	return false
-}
-
-func printArrow() {
-	fmt.Print("> ")
+	// If we got down here, it's a new network
+	fmt.Println("[Creating a new network for the client]")
+	network := Network{}
+	network.Initialize(client)
+	networks = append(networks, network)
 }
 
 func getOwnAddress() string {
@@ -151,198 +48,161 @@ func getOwnAddress() string {
 	return "127.0.0.1"
 }
 
-func getPeerList() {
-	reader := bufio.NewReader(os.Stdin)
+func printArrow() {
+	fmt.Print("> ")
+}
 
-	// Get IP
-	fmt.Print("Enter IP address> ")
-	ip, _ := reader.ReadString('\n')
-
-	if ip == "" {
-		ip = getOwnAddress()
-	}
-
-	// Get port
-	fmt.Print("Enter port> ")
-	port, _ := reader.ReadString('\n')
-
-	// Try to establish connection
-	fullAddress := strings.Replace(ip+":"+port, "\n", "", -1)
-	conn, err := net.Dial("tcp", fullAddress)
+func checkError(err error, msg string) {
 	if err != nil {
-		fmt.Println("No peer found or invalid IP/Port")
-		fmt.Println("Starting a new network")
-	} else {
-		fmt.Println("Connection successful")
-
-		defer conn.Close()
-
-		//Request peer list
-		var message = Message{ID: REQUEST_PEER_LIST_MESSAGE}
-		sendMessage(conn, message)
-
-		// Wait for response
-		var newMessage = &Message{}
-		var dec = gob.NewDecoder(conn)
-		var err = dec.Decode(newMessage)
-		if err != nil {
-			fmt.Println("Error while reading peer list: ", err.Error())
-			return
-		} else if newMessage.ID != PEER_LIST_MESSAGE {
-			fmt.Println("Got an unexspected response from other peer: " + newMessage.ID)
-			return
-		}
-
-		var list = newMessage.Value.([]Peer)
-		fmt.Println("[Got list of peers]")
-		peers = list
+		gotError = true
+		fmt.Println(msg)
 	}
 }
 
-func connectToPeers() {
-
-	fmt.Println("Connecting to up to 10 peers in the network")
-
-	var len = len(peers)
-	var index = -1
-	for i := 0; i < len; i++ {
-		peer := peers[i]
-		if peer == ownPeer {
-			index = i
-			break
-		}
-	}
-
-	if index == -1 {
-		fmt.Println("Error: peer ID wasn't in the list of peers")
-		return
-	}
-
-	// Connect to the 10 peers after peerID in the list with wrap around
-	for i := 1; i <= 10; i++ {
-		currentIndex := (index + i) % len
-		peer := peers[currentIndex]
-
-		// If the list is exhausted
-		if peer == ownPeer {
-			return
-		}
-
-		// Connect to the peer
-		conn, err := net.Dial("tcp", peer.Address)
-		if err != nil {
-			fmt.Println("Unable to connect to peer: ", peer.Address)
-		} else {
-			fmt.Println("Connected to: ", peer.Address)
-
-			go handleConnection(conn)
-		}
+func checkRange(index int, list ...interface{}) {
+	if index < 0 || index > len(list)-1 {
+		gotError = true
+		fmt.Println("Index", index, "is out of range")
 	}
 }
 
-func registerPeersInLedger() {
-	for i := 0; i < len(peers); i++ {
-		ledger.InitializeAccount(peers[i])
-	}
-}
+var gotError = false
 
-func handleTransaction(trans SignedTransaction) bool {
-	valid := ledger.SignedTransaction(&trans)
-
-	if !valid {
-		return false
-	}
-
-	fmt.Println("Addind trans ID:", trans.ID)
-	transactionsSent = append(transactionsSent, trans.ID)
-	return true
-}
-
-func broadcastSelf() {
-	var message = Message{ID: NEW_PEER_MESSAGE, Value: ownPeer}
-	outboundMessages <- message
-}
-
-func setupListeningServer() net.Listener {
-	fmt.Println("Listening for connections on:")
-	ln, _ := net.Listen("tcp", ":")
-
-	// Printing the IP's
-	var address = getOwnAddress()
-
-	// Printing the port
-	_, port, _ := net.SplitHostPort(ln.Addr().String())
-
-	// Generate address
-	fullAddress := address + ":" + port
-	fmt.Println(fullAddress)
-
-	ownPeer = Peer{Address: fullAddress, Pk: pk.toString()}
-
-	printArrow()
-
-	return ln
-}
-
-func addSelfToList() {
-	peers = append(peers, ownPeer)
-	sortPeers()
-}
-
-func sortPeers() {
-	address := func(i, j int) bool {
-		return peers[i].Address < peers[j].Address
-	}
-	sort.SliceStable(peers, address)
-}
-
-var outboundMessages = make(chan Message) // A channel for all messages
-var connections = []net.Conn{}            // A list of all current connections
-var transactionsSent = []string{}         // A list of all received messages
-var peers = []Peer{}                      // List of all peers in the network
-var ownPeer Peer                          // The id of this peer (public key as string)
-
-var pk PublicKey
-var sk SecretKey
-
-var transactionID = 0
-var ledger *Ledger
+var fullIP = regexp.MustCompile(`^(\d{1,3}\.){3}\d{1,3}:\d{5}$`)
+var onlyPort = regexp.MustCompile(`^:\d{1,5}$`)
 
 func main() {
-
-	// Generate RSA key
-	n, d := KeyGen(2000)
-	pk = generatePublicKey(n, e)
-	sk = generateSecretKey(n, d)
 
 	// Register gob interfaces - need for en-/decoding
 	gob.Register(Peer{})
 	gob.Register([]Peer{})
 	gob.Register(SignedTransaction{})
 
-	// Creates the ledger
-	ledger = MakeLedger()
+	// Start listening for user input
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		printArrow()
+		gotError = false
 
-	// Connect to a peer in the network, and get the list of peers
-	getPeerList()
+		text, err := reader.ReadString('\n')
 
-	// Start listening for new connections
-	var ln = setupListeningServer()
-	go listenForConnections(ln)
+		if err != nil {
+			panic(err)
+		}
 
-	// Start broadcasting messagesages
-	go broadcastMessages()
+		commandParts := strings.Split(strings.Trim(text, "\n"), " ")
+		command := strings.ToLower(commandParts[0])
+		params := commandParts[1:]
 
-	addSelfToList()
-	registerPeersInLedger()
-	connectToPeers()
-	broadcastSelf()
+		invalidCommand := false
+		cmCheck := func(exptectedString string, expectedArgs int) bool {
+			exptectedStrings := strings.Split(exptectedString, " ")
 
-	// Ready
-	fmt.Println("[Ready]")
-	printArrow()
+			for i := 0; i < len(exptectedStrings); i++ {
+				str := exptectedStrings[i]
+				if strings.ToLower(str) == command {
+					if expectedArgs == len(params) {
+						return true
+					}
 
-	// Start listening for input
+					invalidCommand = true
+					fmt.Println("Invalid number of arguments. Expected", expectedArgs, "but got", len(params))
+				}
+			}
+
+			return false
+		}
+
+		if cmCheck("createClient cc", 2) {
+			fmt.Println("Creating a new client")
+
+			ip := params[0]
+
+			if onlyPort.MatchString(ip) {
+				ip = getOwnAddress() + ip
+			} else if !fullIP.MatchString(ip) {
+				ip = "0.0.0.0:00000"
+				fmt.Println("This is not a valid ip. Using", ip)
+			}
+
+			//rsaKeyIndex := params[1]
+
+			createClient(ip, nil, nil)
+			fmt.Println("Finished creating client")
+
+		} else if cmCheck("trans", 4) {
+			/*networkIndex, errNetwork := strconv.Atoi(params[0])
+			fromIndex, errFrom := strconv.Atoi(params[1])
+			toIndex, errTo := strconv.Atoi(params[1])
+			amount, errAmount := strconv.Atoi(params[1])
+
+			checkError(errNetwork, "Invalid network index")
+			checkError(errFrom, "Invalid from id")
+			checkError(errTo, "Invalid to id")
+			checkError(errAmount, "Invalid amount")
+
+			checkRange(networkIndex, networks)
+
+			if gotError {
+				continue
+			}
+
+			network := networks[networkIndex]
+
+			checkRange(fromIndex, network.Clients)
+			checkRange(toIndex, network.Clients)
+
+			if gotError {
+				continue
+			}
+
+			from := network.Clients[fromIndex]
+			to := network.Clients[toIndex]
+
+			if from.ownPeer == to.ownPeer {
+				fmt.Println("from and to cannot be the same")
+			} else {
+				id := from.ownPeer.Address + "-" + strconv.Itoa(from.transactionID)
+				from.transactionID++
+
+				transaction := SignedTransaction{ID: id, From: sender.Pk, To: receiver.Pk, Amount: amount}
+
+				messageForSigning := GenerateMessageFromTransaction(&transaction)
+
+				signature := Sign(messageForSigning, sk)
+				transaction.Signature = signature.String()
+
+				if handleTransaction(transaction) {
+					var message = Message{ID: TRANSACTION_MESSAGE, Value: transaction}
+
+					fmt.Println("Sending transaction with id ", id, " from ", from, " to ", to, " for ", amount)
+
+					outboundMessages <- message
+				}
+			}*/
+
+		} else if cmCheck("status", 0) {
+			for i := 0; i < len(networks); i++ {
+				fmt.Println("Network", i, ":")
+				networks[i].Ledger.PrintStatus()
+			}
+		} else if cmCheck("networks", 0) {
+			// Print all the networks along side how many is in each
+		} else if cmCheck("keys", 1) {
+			// Print list of king keys in a given network
+		} else if cmCheck("help", 0) {
+			fmt.Println("A list of commands:")
+			fmt.Println("\trans\t<network : int> <from index : int> <to index : int> <amount : int>")
+			fmt.Println("\tcreateClient | cc\t<ip : string> <RSA key index : int>")
+
+		} else if cmCheck("quit", 0) {
+			fmt.Println("Thanks for playing")
+			return
+		} else if !invalidCommand {
+			fmt.Println("Invalid input. Type \"help\" for a list of commands")
+		}
+	}
+	/*// Start listening for input
 	for {
 		reader := bufio.NewReader(os.Stdin)
 
@@ -457,5 +317,5 @@ func main() {
 
 			printArrow()
 		}
-	}
+	}*/
 }

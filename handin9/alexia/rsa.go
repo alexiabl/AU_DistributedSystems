@@ -38,6 +38,9 @@ func GeneratePublicKeyFromString(str string) PublicKey {
 	eInt := new(big.Int)
 	eInt.SetString(e, 10)
 
+	pk.N_pk = nInt
+	pk.E_pk = eInt
+
 	return PublicKey{N_pk: nInt, E_pk: eInt}
 }
 
@@ -56,7 +59,7 @@ func GenerateSecretKeyFromString(str string) SecretKey {
 }
 
 //RSA Key generator
-func KeyGen(k int) (PublicKey, SecretKey) {
+func KeyGen(k int) (*big.Int, *big.Int) {
 	n := new(big.Int)
 	p := new(big.Int)
 	q := new(big.Int)
@@ -68,7 +71,7 @@ func KeyGen(k int) (PublicKey, SecretKey) {
 	n.Mul(p, q)
 
 	d := calculateD(p, q)
-	return generatePublicKey(n, e), generateSecretKey(n, d)
+	return n, d
 }
 
 // Helper method to calculate a prime number and check the GCD condition
