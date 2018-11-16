@@ -9,6 +9,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
+	"sync"
+	"math/rand"
+	"math/big"
 )
 
 func handleConnection(conn net.Conn) {
@@ -94,6 +98,74 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
+/*
+func handleBlock(block Block){
+	//Verify the signed block with the sequencer pk
+	var msg_block, _ = GenerateMessageFromBlock(block)
+	if (Verify(msg_block,block.Signature,sequencerPk)){
+		if isBlockValid(block) {
+			currentBlockIndex = block.ID
+			for i := 0; i<len(block.Transactions); i++ {
+				trans := block.Transactions[i]
+				for j:= 0; j<len(transactionsReceived); j++ {
+					if trans == transactionsReceived[j].ID {
+						currTransaction := transactionsReceived[j]
+						if (handleTransaction(currTransaction)){
+							fmt.Println("Success!")
+							printArrow()
+							break
+						}else{
+							fmt.Println("Transaction: "+currTransaction.ID+" failed")
+						}
+
+					}
+				}
+			}
+		}
+}
+}*/
+
+func isBlockValid(block Block) bool {
+	var valid = false
+	if (block.ID == currentBlockIndex + 1) {
+		valid = true
+	}
+	return valid
+}
+
+func startBlockGen(s_sk SecretKey) {
+	blockCounter := 0
+	fmt.Println("Starting sequencer")
+	//every 10 seconds
+	var block = Block{}
+	ticker := time.NewTicker(10 * time.Second)
+    for {
+    select {
+	case <- ticker.C:
+		transactionLock.Lock()
+		if (len(transactionsReceived) > 0){
+			block.ID = blockCounter
+			fmt.Println("Creating a new block: ",block.ID)
+			transactionIDs := []string{}
+			for i := 0; i<len(transactionsReceived); i++ {
+				transactionIDs = append(transactionIDs, transactionsReceived[i].ID)
+			}
+			block.Transactions = transactionIDs
+			msg_block, _ := GenerateMessageFromBlock(block)
+			signature := Sign(msg_block,s_sk)
+			block.Signature = signature
+			
+			blockCounter++
+			var blockMessage = Message{ID:BLOCK_MESSAGE, Value:block}
+			//handleBlock(block)
+			transactionsReceived = transactionsReceived[:0]
+			outboundMessages <- blockMessage
+		}
+		transactionLock.Unlock()		
+	}
+}
+}
+
 func listenForConnections(ln net.Listener) {
 	defer ln.Close()
 
@@ -172,6 +244,8 @@ func getPeerList() {
 	if err != nil {
 		fmt.Println("No peer found or invalid IP/Port")
 		fmt.Println("Starting a new network")
+		//Create Genesis block
+		//generateGenesisBlock()
 	} else {
 		fmt.Println("Connection successful")
 
@@ -189,13 +263,15 @@ func getPeerList() {
 			fmt.Println("Error while reading peer list: ", err.Error())
 			return
 		} else if newMessage.ID != PEER_LIST_MESSAGE {
-			fmt.Println("Got an unexspected response from other peer: " + newMessage.ID)
+			fmt.Println("Got an unexpected response from other peer: " + newMessage.ID)
 			return
 		}
 
 		var list = newMessage.Value.([]Peer)
 		fmt.Println("[Got list of peers]")
 		peers = list
+
+		//Start generating blocks
 	}
 }
 
@@ -253,7 +329,7 @@ func handleTransaction(trans SignedTransaction) bool {
 		return false
 	}
 
-	fmt.Println("Addind trans ID:", trans.ID)
+	fmt.Println("Adding trans ID:", trans.ID)
 	transactionsSent = append(transactionsSent, trans.ID)
 	return true
 }
@@ -296,6 +372,29 @@ func sortPeers() {
 	sort.SliceStable(peers, address)
 }
 
+
+func generateGenesisBlock(){
+	//Master keys will be distributed for the first 10 peers joining
+	var masterKeys = createMasterKeys()
+	genesisBlock.MasterKeys = masterKeys
+	//Seed
+	rand.Seed(time.Now().UnixNano())
+	seed = rand.Int()
+	genesisBlock.Seed = seed
+	genesisBlock.ID = currentBlockIndex+1
+
+}
+
+
+func draw(sk SecretKey, slot int) (*big.Int) {
+	var msg = []byte(strconv.Itoa(slot) + strconv.Itoa(seed))
+	var draw = Sign(msg, sk)
+	return draw
+}
+
+
+
+
 var outboundMessages = make(chan Message) // A channel for all messages
 var connections = []net.Conn{}            // A list of all current connections
 var transactionsSent = []string{}         // A list of all received messages
@@ -307,6 +406,14 @@ var sk SecretKey
 
 var transactionID = 0
 var ledger *Ledger
+var genesisBlock GenesisBlock = GenesisBlock{}
+var currentBlockIndex = -1
+var transactionsChannel = make(chan []string)
+var transactionLock sync.Mutex
+var transactionsReceived = []SignedTransaction{}	  // List of the transactions id's received
+var seed = 0
+
+
 
 func main() {
 
@@ -319,6 +426,8 @@ func main() {
 	gob.Register(Peer{})
 	gob.Register([]Peer{})
 	gob.Register(SignedTransaction{})
+	gob.Register(Block{})
+	gob.Register(GenesisBlock{})
 
 	// Creates the ledger
 	ledger = MakeLedger()
@@ -334,7 +443,8 @@ func main() {
 	go broadcastMessages()
 
 	addSelfToList()
-	registerPeersInLedger()
+	//register premium accounts - need to handle new regular peers join 
+	//registerPeersInLedger()
 	connectToPeers()
 	broadcastSelf()
 

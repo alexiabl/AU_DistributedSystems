@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"reflect"
 	"sync"
+	"strconv"
 )
 
 type Ledger struct {
@@ -36,10 +37,51 @@ type Message struct {
 	Value interface{}
 }
 
+type Block struct {
+	ID	int
+	Transactions []string
+	Signature	 *big.Int
+}
+
+type GenesisBlock struct {
+	ID int
+	Transactions []string
+	MasterKeys []KeyPair
+	Seed int
+}
+
+type KeyPair struct {
+	Pk PublicKey
+	Sk SecretKey
+}
+
 const TRANSACTION_MESSAGE = "transMsg"                 // When the message contains a transaction
 const NEW_PEER_MESSAGE = "newPeerMsg"                  // When the message contains a new peer
 const REQUEST_PEER_LIST_MESSAGE = "requestPeerListMsg" // When the message requests the list of peers
 const PEER_LIST_MESSAGE = "peerListMsg"                // When the message contains the list of peers
+const BLOCK_MESSAGE = "blockMsg"					   // When a block is sent
+const NEW_PREMIUM_PEER_MESSAGE= "newPremiumPeerMsg"		   // When the message contains a new premium peer
+
+func createMasterKeys() ([]KeyPair) {
+	masterKeys := []KeyPair{}
+	for i := 0; i<10; i++{
+		n, d := KeyGen(2000)
+		pk := generatePublicKey(n, e)
+		sk := generateSecretKey(n, d)
+		var pair = KeyPair{Pk:pk, Sk:sk}
+		masterKeys = append(masterKeys,pair)
+	}
+	return masterKeys
+}
+
+func GenerateMessageFromBlock(block Block) ([]byte,error) {
+	idBytes := []byte(strconv.Itoa(block.ID))
+	for i := 0 ; i<len(block.Transactions); i++ {
+		idBytes = append(idBytes,[]byte(block.Transactions[i])...)
+	}
+    return idBytes, nil
+}
+
 
 func (l *Ledger) SignedTransaction(t *SignedTransaction) bool {
 	l.lock.Lock()
@@ -74,6 +116,12 @@ func (l *Ledger) InitializeAccount(peer Peer) {
 	l.Accounts[peer.Pk] = 0
 }
 
+func (l *Ledger) InitializePremiumAccount(peer Peer) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	l.Accounts[peer.Pk] = 1000000
+}
+
 func (l *Ledger) PrintStatus() {
 	l.lock.Lock()
 	defer l.lock.Unlock()
@@ -83,7 +131,7 @@ func (l *Ledger) PrintStatus() {
 		var key = keys[i]
 		var str = key.String()
 		var peer = GetPeerFromPK(str)
-		fmt.Println("Account", peer.Address, "has", l.Accounts[str], "dineros")
+		fmt.Println("Account", peer.Address, "has", l.Accounts[str], "AU")
 	}
 }
 
