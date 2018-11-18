@@ -1,30 +1,19 @@
 package main
 
-import "math/big"
-
-func (l *Ledger) SignedTransaction(t *SignedTransaction) bool {
-	l.Lock.Lock()
-	defer l.Lock.Unlock()
-
-	// Get public key of the sender
-	pk := GeneratePublicKeyFromString(t.From)
-
-	signatureString := t.Signature
-	signature := new(big.Int)
-	signature.SetString(signatureString, 10)
-	message := GenerateMessageFromTransaction(t)
-
-	validSignature := Verify(message, signature, pk)
-
-	if validSignature {
-		l.Accounts[t.From] -= t.Amount
-		l.Accounts[t.To] += t.Amount
-		return true
-	}
-
-	return false
-}
+import (
+	"strconv"
+)
 
 func GenerateMessageFromTransaction(t *SignedTransaction) []byte {
 	return []byte(t.From + t.To + t.ID + string(t.Amount))
+}
+
+func GenerateMessageFromBlock(block *Block) []byte {
+	idBytes := []byte(strconv.Itoa(block.ID) + block.PreviousBlock + block.Sender)
+
+	for i := 0; i < len(block.Transactions); i++ {
+		idBytes = append(idBytes, []byte(block.Transactions[i])...)
+	}
+
+	return idBytes
 }

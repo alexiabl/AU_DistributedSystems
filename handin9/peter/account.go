@@ -1,21 +1,8 @@
 package main
 
 import (
-	"fmt"
-	"reflect"
-	"sync"
+	"math/big"
 )
-
-type Ledger struct {
-	Accounts map[string]int
-	Lock     sync.Mutex
-}
-
-func MakeLedger() *Ledger {
-	ledger := new(Ledger)
-	ledger.Accounts = make(map[string]int)
-	return ledger
-}
 
 type SignedTransaction struct {
 	ID        string // Any string
@@ -35,25 +22,30 @@ type Message struct {
 	Value interface{}
 }
 
-const TRANSACTION_MESSAGE = "transMsg"                 // When the message contains a transaction
-const NEW_PEER_MESSAGE = "newPeerMsg"                  // When the message contains a new peer
-const REQUEST_PEER_LIST_MESSAGE = "requestPeerListMsg" // When the message requests the list of peers
-const PEER_LIST_MESSAGE = "peerListMsg"                // When the message contains the list of peers
-
-func (l *Ledger) InitializeAccount(peer Peer) {
-	l.Lock.Lock()
-	defer l.Lock.Unlock()
-	l.Accounts[peer.Pk] = 0
+type InitInfo struct {
+	Peers        []Peer
+	GenesisBlock GenesisBlock
 }
 
-func (l *Ledger) PrintStatus() {
-	l.Lock.Lock()
-	defer l.Lock.Unlock()
-	var keys = reflect.ValueOf(l.Accounts).MapKeys()
-	fmt.Println("There are", len(keys), "keys")
-	for i := 0; i < len(keys); i++ {
-		var key = keys[i]
-		var str = key.String()
-		fmt.Println("Account", i, "has", l.Accounts[str], "dineros")
+const TRANSACTION_MESSAGE = "transMsg"                 // When the message contains a transaction
+const NEW_PEER_MESSAGE = "newPeerMsg"                  // When the message contains a new peer
+const REQUEST_INIT_INFO_MESSAGE = "requestInitInfoMsg" // When the message requests the initial info
+const INIT_INFO_MESSAGE = "initInfoMsg"                // When the message contains the initial info
+const BLOCK_MESSAGE = "blockMsg"                       // When a block is sent
+
+func (t *SignedTransaction) isValid() bool {
+	// Get public key of the sender
+
+	if t.Amount < 1 {
+		return false
 	}
+
+	pk := GeneratePublicKeyFromString(t.From)
+
+	signatureString := t.Signature
+	signature := new(big.Int)
+	signature.SetString(signatureString, 10)
+	message := GenerateMessageFromTransaction(t)
+
+	return Verify(message, signature, pk)
 }
