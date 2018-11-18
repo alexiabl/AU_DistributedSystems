@@ -55,9 +55,9 @@ func sendTransaction(from *Client, to *Client, amount int) {
 		if transaction.isValid() {
 			var message = Message{ID: TRANSACTION_MESSAGE, Value: transaction}
 
-			fmt.Println("Sending transaction with id ", id, " from ", from, " to ", to, " for ", amount)
+			fmt.Println("Sending transaction with id ", id, " from ", from.ownPeer.Address, " to ", to.ownPeer.Address, " for ", amount, "Msg:", message)
 
-			from.outboundMessages <- message
+			from.handleTransaction(message)
 		}
 	}
 }
@@ -126,122 +126,6 @@ func main() {
 			return
 		}
 	}
-	/*// Start listening for input
-	for {
-		reader := bufio.NewReader(os.Stdin)
-
-		// Begin chat loop
-		for {
-			text, _ := reader.ReadString('\n')
-
-			// Exit the program if the user types 'quit'
-			if text == "quit\n" {
-				return
-			}
-
-			// List all peers in the peer list
-			if text == "list\n" {
-				for index, peer := range peers {
-					// Adding "(you)" after the local ip in the list
-					youStr := ""
-					if peer == ownPeer {
-						youStr = "(you)"
-					}
-
-					fmt.Println(strconv.Itoa(index+1)+": "+peer.Address, youStr)
-				}
-			}
-
-			// Print the account of each peer
-			if text == "status\n" {
-				ledger.PrintStatus()
-			}
-
-			// List all possible commands
-			if text == "help\n" {
-				fmt.Println("All available commands are: quit, list, status, help, trans, testSignature")
-			}
-
-			if text == "testSignature\n" {
-				fmt.Println("Sending a signed transaction with an invalid signature")
-
-				if len(peers) < 2 {
-					fmt.Println("Not enough peers in the network")
-					continue
-				}
-
-				var sender = ownPeer
-				var receiver Peer
-
-				for i := 0; i < len(peers); i++ {
-					if peers[i] != ownPeer {
-						receiver = peers[i]
-						break
-					}
-				}
-
-				amount := 123
-				id := sender.Address + "-" + strconv.Itoa(transactionID)
-				transactionID++
-
-				transaction := SignedTransaction{ID: id, From: sender.Pk, To: receiver.Pk, Amount: amount}
-
-				// Switched transaction.From and transaction.To, which will give another message and therefore a differnet signature, than it is supposed to be
-				messageForSigning := []byte(transaction.To + transaction.From + id + string(amount))
-
-				signature := Sign(messageForSigning, sk)
-				transaction.Signature = signature.String()
-
-				if handleTransaction(transaction) {
-					fmt.Println("The transaction was accepted as real")
-				} else {
-					fmt.Println("The transaction wasn't accepted")
-				}
-			}
-
-			// Make a transaction
-			var splitMessage = strings.Split(text, " ")
-			if splitMessage[0] == "trans" {
-
-				if len(splitMessage) != 3 {
-					fmt.Println("Use:\ntrans <to IP> <amount>")
-				} else {
-					var from = ownPeer.Address
-					var to = splitMessage[1]
-
-					if from == to {
-						fmt.Println("<to IP> needs to be someone else than yourself")
-					} else if !isPeerRegistered(to) {
-						fmt.Println("<to IP> not found in peers")
-					} else {
-						sender := ownPeer
-						receiver := GetPeerFromIP(to)
-						amountStr := strings.Replace(splitMessage[2], "\n", "", -1)
-						amount, _ := strconv.Atoi(amountStr)
-						id := sender.Address + "-" + strconv.Itoa(transactionID)
-						transactionID++
-
-						transaction := SignedTransaction{ID: id, From: sender.Pk, To: receiver.Pk, Amount: amount}
-
-						messageForSigning := GenerateMessageFromTransaction(&transaction)
-
-						signature := Sign(messageForSigning, sk)
-						transaction.Signature = signature.String()
-
-						if handleTransaction(transaction) {
-							var message = Message{ID: TRANSACTION_MESSAGE, Value: transaction}
-
-							fmt.Println("Sending transaction with id ", id, " from ", from, " to ", to, " for ", amount)
-
-							outboundMessages <- message
-						}
-					}
-				}
-			}
-
-			printArrow()
-		}
-	}*/
 }
 
 func handleCommand(text string) {
@@ -336,8 +220,11 @@ func handleCommand(text string) {
 			network := networks[i]
 			for j := 0; j < len(network.Clients); j++ {
 				fmt.Println("Client", j)
-				network.Clients[i].generateNewestLedger().PrintStatus()
-				fmt.Println()
+				ledger := network.Clients[i].generateNewestLedger()
+				if ledger != nil {
+					ledger.PrintStatus()
+					fmt.Println()
+				}
 			}
 		}
 	} else if cmCheck("networks", 0) {
@@ -352,7 +239,7 @@ func handleCommand(text string) {
 
 			for j := 0; j < len; j++ {
 				client := network.Clients[j]
-				fmt.Println("Client", j, "has ip", client.ownPeer.Address)
+				fmt.Println("Client", j, "has ip", client.ownPeer.Address, " and key:", client.ownPeer.Pk[0:50]+"...")
 			}
 
 			fmt.Println()
@@ -368,7 +255,13 @@ func handleCommand(text string) {
 		c := createClient("")
 		createClient(c.ownPeer.Address)
 
-		handleCommand("trans 0 0 1 4567")
+		handleCommand("trans 0 0 1 100")
+		handleCommand("trans 0 0 1 100")
+		handleCommand("trans 0 1 0 1000")
+		handleCommand("trans 0 0 1 50")
+		handleCommand("trans 0 0 1 0")   // Invalid
+		handleCommand("trans 0 0 1 -69") // Invalid
+		handleCommand("trans 0 0 1 10000000")
 		handleCommand("start 0")
 	} else if cmCheck("quit", 0) {
 		fmt.Println("Thanks for playing")

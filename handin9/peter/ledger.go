@@ -33,8 +33,10 @@ func (l *Ledger) SignedTransaction(t *SignedTransaction) bool {
 		initializeAccount(t.From)
 		initializeAccount(t.To)
 
-		l.Accounts[t.From] -= t.Amount
-		l.Accounts[t.To] += t.Amount
+		amount := t.Amount - 1
+
+		l.Accounts[t.From] -= amount
+		l.Accounts[t.To] += amount
 		return true
 	}
 

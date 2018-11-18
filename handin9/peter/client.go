@@ -160,8 +160,7 @@ func (c *Client) handleConnection(conn net.Conn) {
 
 			switch message.ID {
 			case TRANSACTION_MESSAGE:
-				var transaction = message.Value.(SignedTransaction)
-				c.handleTransaction(transaction, message)
+				c.handleTransaction(message)
 				break
 
 			case NEW_PEER_MESSAGE:
@@ -197,11 +196,12 @@ func (c *Client) handleConnection(conn net.Conn) {
 	}
 }
 
-func (c *Client) handleTransaction(trans SignedTransaction, msg Message) {
-	var transID = trans.ID
+func (c *Client) handleTransaction(msg Message) {
+	var transaction = msg.Value.(SignedTransaction)
+	var transID = transaction.ID
 
 	// Don't broadcast an invalid message
-	if !trans.isValid() {
+	if !transaction.isValid() {
 		return
 	}
 
@@ -218,9 +218,9 @@ func (c *Client) handleTransaction(trans SignedTransaction, msg Message) {
 	}
 
 	c.transactionsSent = append(c.transactionsSent, transID)
-	c.transactionsReceived = append(c.transactionsReceived, trans)
+	c.transactionsReceived = append(c.transactionsReceived, transaction)
 
-	fmt.Println("[Got transaction]")
+	fmt.Println("[Got valid transaction]")
 	printArrow()
 
 	c.outboundMessages <- msg
@@ -234,36 +234,15 @@ func (c *Client) handleBlock(block *Block, msg Message) {
 		}
 	}
 
-	fmt.Println("Me:", c.ownPeer.Address)
-	fmt.Println("Peers:", c.peers)
+	// Used to debug unknown error where program crashes because of nil pointer
+	/*fmt.Println("Me:", c.ownPeer.Address)
+	fmt.Println("Peers:", c.peers)*/
 	if block.isValidSignature() {
 		if c.isBlockValid(block) {
-			if len(block.Transactions) > 0 {
-				fmt.Println("Got a valid block with", len(block.Transactions), "transactions")
-			}
 
 			c.blocks = append(c.blocks, block)
 
 			c.outboundMessages <- msg
-			/*
-				currentBlockIndex = block.ID
-				for i := 0; i<len(block.Transactions); i++ {
-					trans := block.Transactions[i]
-					for j:= 0; j<len(transactionsReceived); j++ {
-						if trans == transactionsReceived[j].ID {
-							currTransaction := transactionsReceived[j]
-							if (handleTransaction(currTransaction)){
-								fmt.Println("Success!")
-								printArrow()
-								break
-							}else{
-								fmt.Println("Transaction: "+currTransaction.ID+" failed")
-							}
-
-						}
-					}
-				}
-			*/
 		}
 	}
 }
@@ -475,7 +454,6 @@ func (c *Client) generateNewestLedger() *Ledger {
 	blocks := []*Block{}
 
 	for block.ID != 0 {
-		fmt.Println("ID:", block.ID)
 		blocks = append([]*Block{block}, blocks...) // Unshift the block
 		block = c.getBlockBySignature(block.PreviousBlock)
 	}
@@ -486,17 +464,22 @@ func (c *Client) generateNewestLedger() *Ledger {
 
 	for _, block := range blocks {
 		for _, transID := range block.Transactions {
+			foundTrans := false
 			for _, trans := range c.transactionsReceived {
 				if transID == trans.ID {
+					foundTrans = true
 					if ledger.SignedTransaction(&trans) {
-						fmt.Println("Success!")
 						printArrow()
 						break
 					} else {
 						fmt.Println("Transaction: " + trans.ID + " failed")
 					}
-
 				}
+			}
+
+			if !foundTrans {
+				fmt.Println("Missing a transaction:", transID+". Returning nil")
+				return nil
 			}
 		}
 	}
