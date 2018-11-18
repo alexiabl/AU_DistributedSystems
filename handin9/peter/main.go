@@ -332,7 +332,7 @@ func handleCommand(text string) {
 
 	} else if cmCheck("status", 0) {
 		for i := 0; i < len(networks); i++ {
-			fmt.Println("##### Network", i, ":")
+			fmt.Println("##### Network", i, "#####")
 			network := networks[i]
 			for j := 0; j < len(network.Clients); j++ {
 				fmt.Println("Client", j)

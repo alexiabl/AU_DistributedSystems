@@ -21,7 +21,18 @@ func (l *Ledger) SignedTransaction(t *SignedTransaction) bool {
 	l.Lock.Lock()
 	defer l.Lock.Unlock()
 
+	initializeAccount := func(pkStr string) {
+		if _, alreadyInitialized := l.Accounts[pkStr]; !alreadyInitialized {
+			l.Accounts[pkStr] = 0
+		}
+	}
+
 	if t.isValid() && l.isValid(t) {
+
+		// Register accounts, if they aren't there
+		initializeAccount(t.From)
+		initializeAccount(t.To)
+
 		l.Accounts[t.From] -= t.Amount
 		l.Accounts[t.To] += t.Amount
 		return true
@@ -42,14 +53,6 @@ func (l *Ledger) isValid(t *SignedTransaction) bool {
 	}
 
 	return true
-}
-
-func (l *Ledger) InitializeAccount(pkStr string) {
-	l.Lock.Lock()
-	defer l.Lock.Unlock()
-	if _, alreadyInitialized := l.Accounts[pkStr]; !alreadyInitialized {
-		l.Accounts[pkStr] = 0
-	}
 }
 
 func (l *Ledger) InitializePremiumAccount(pkStr string) {

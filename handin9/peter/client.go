@@ -24,7 +24,6 @@ type Client struct {
 	sk SecretKey
 
 	transactionID int
-	ledger        *Ledger
 }
 
 func (c *Client) GetPeerFromPK(str string) *Peer {
@@ -178,7 +177,6 @@ func (c *Client) handleConnection(conn net.Conn) {
 				fmt.Println("Wasn't already added")
 
 				c.peers = append(c.peers, peer)
-				c.ledger.InitializeAccount(peer.Pk)
 				c.sortPeers()
 
 				c.outboundMessages <- message
@@ -387,11 +385,6 @@ func (c *Client) setGenesisBlock(genesis *GenesisBlock) {
 	//TODO Verify genesis block
 	c.genesisBlock = genesis
 	c.blocks = append(c.blocks, genesis.Block)
-
-	// Add 10^6 to all the king keys
-	for i := 0; i < len(genesis.KingKeys); i++ {
-		c.ledger.InitializePremiumAccount(genesis.KingKeys[i])
-	}
 }
 
 func (c *Client) isPeerRegistered(address string) bool {
@@ -464,12 +457,6 @@ func (c *Client) connectToPeers() {
 	}
 }
 
-func (c *Client) registerPeersInLedger() {
-	for i := 0; i < len(c.peers); i++ {
-		c.ledger.InitializeAccount(c.peers[i].Pk)
-	}
-}
-
 func (c *Client) broadcastSelf() {
 	var message = Message{ID: NEW_PEER_MESSAGE, Value: c.ownPeer}
 	c.outboundMessages <- message
@@ -484,10 +471,6 @@ func (c *Client) generateNewestLedger() *Ledger {
 	// Make a copy of the current ledger
 	ledger := MakeLedger()
 
-	for key, value := range c.ledger.Accounts {
-		ledger.Accounts[key] = value
-	}
-
 	block := c.getLongestBlock(MAX_INT)
 	blocks := []*Block{}
 
@@ -495,6 +478,10 @@ func (c *Client) generateNewestLedger() *Ledger {
 		fmt.Println("ID:", block.ID)
 		blocks = append([]*Block{block}, blocks...) // Unshift the block
 		block = c.getBlockBySignature(block.PreviousBlock)
+	}
+
+	for _, kingKey := range c.genesisBlock.KingKeys {
+		ledger.InitializePremiumAccount(kingKey)
 	}
 
 	for _, block := range blocks {
@@ -543,9 +530,6 @@ func (c *Client) Initialize(targetIP string, pair KeyPair) {
 
 	c.outboundMessages = make(chan Message)
 
-	// Creates the ledger
-	c.ledger = MakeLedger()
-
 	// Connect to a peer in the network, and get the list of peers
 	c.getPeerList(targetIP)
 
@@ -557,7 +541,6 @@ func (c *Client) Initialize(targetIP string, pair KeyPair) {
 	go c.broadcastMessages()
 
 	c.addSelfToList()
-	c.registerPeersInLedger()
 
 	if !c.firstPeer || true {
 		c.connectToPeers()

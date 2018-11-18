@@ -2,7 +2,6 @@ package main
 
 type Network struct {
 	Clients  []*Client
-	Ledger   *Ledger
 	KingKeys []KeyPair
 	KeyIndex int
 }
@@ -24,8 +23,6 @@ func (n *Network) Initialize(initClient *Client, ip string) {
 	n.Clients = []*Client{}
 
 	n.AddClient(initClient, ip)
-
-	n.Ledger = initClient.ledger
 
 	// Generate genesis block
 	block := initClient.generateBlock()
