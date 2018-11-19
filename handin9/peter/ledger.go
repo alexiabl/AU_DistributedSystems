@@ -3,12 +3,10 @@ package main
 import (
 	"fmt"
 	"reflect"
-	"sync"
 )
 
 type Ledger struct {
 	Accounts map[string]int
-	Lock     sync.Mutex
 }
 
 func MakeLedger() *Ledger {
@@ -18,20 +16,12 @@ func MakeLedger() *Ledger {
 }
 
 func (l *Ledger) SignedTransaction(t *SignedTransaction) bool {
-	l.Lock.Lock()
-	defer l.Lock.Unlock()
-
-	initializeAccount := func(pkStr string) {
-		if _, alreadyInitialized := l.Accounts[pkStr]; !alreadyInitialized {
-			l.Accounts[pkStr] = 0
-		}
-	}
 
 	if t.isValid() && l.isValid(t) {
 
 		// Register accounts, if they aren't there
-		initializeAccount(t.From)
-		initializeAccount(t.To)
+		l.initializeAccount(t.From)
+		l.initializeAccount(t.To)
 
 		amount := t.Amount - 1
 
@@ -41,6 +31,12 @@ func (l *Ledger) SignedTransaction(t *SignedTransaction) bool {
 	}
 
 	return false
+}
+
+func (l *Ledger) initializeAccount(pkStr string) {
+	if _, alreadyInitialized := l.Accounts[pkStr]; !alreadyInitialized {
+		l.Accounts[pkStr] = 0
+	}
 }
 
 func (l *Ledger) isValid(t *SignedTransaction) bool {
@@ -57,20 +53,17 @@ func (l *Ledger) isValid(t *SignedTransaction) bool {
 	return true
 }
 
-func (l *Ledger) InitializePremiumAccount(pkStr string) {
-	l.Lock.Lock()
-	defer l.Lock.Unlock()
-	l.Accounts[pkStr] = 1000000
+func (l *Ledger) AddAmount(account string, amount int) {
+	l.initializeAccount(account)
+	l.Accounts[account] += amount
 }
 
 func (l *Ledger) PrintStatus() {
-	l.Lock.Lock()
-	defer l.Lock.Unlock()
 	var keys = reflect.ValueOf(l.Accounts).MapKeys()
 	fmt.Println("There are", len(keys), "keys")
 	for i := 0; i < len(keys); i++ {
 		var key = keys[i]
 		var str = key.String()
-		fmt.Println("Account", i, "has", l.Accounts[str], "dineros. Key:", str[0:50]+"...")
+		fmt.Println("Account", i, "has", l.Accounts[str], "AU(s). Key:", str[0:50]+"...")
 	}
 }

@@ -8,6 +8,7 @@ type Block struct {
 	Sender        string
 	Transactions  []string
 	Signature     string
+	Draw          *big.Int
 }
 
 type GenesisBlock struct {
@@ -16,13 +17,18 @@ type GenesisBlock struct {
 	Seed     int
 }
 
-func (b *Block) isValidSignature() bool {
+func (b *Block) isValid(seed int) bool {
+
+	pk := GeneratePublicKeyFromString(b.Sender)
+
+	if !IsValidDraw(seed, b.ID, b.Draw, pk) {
+		return false
+	}
+
 	blockMsg := GenerateMessageFromBlock(b)
 
 	temp := new(big.Int)
 	signature, _ := temp.SetString(b.Signature, 10)
-
-	pk := GeneratePublicKeyFromString(b.Sender)
 
 	return Verify(blockMsg, signature, pk)
 }

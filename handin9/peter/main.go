@@ -2,11 +2,16 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/gob"
 	"fmt"
+	"math"
+	"math/big"
+	"math/rand"
 	"net"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -109,6 +114,8 @@ func main() {
 	gob.Register(GenesisBlock{})
 	gob.Register(InitInfo{})
 
+	InitConsts()
+
 	// Start listening for user input
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -200,6 +207,57 @@ func handleCommand(text string) {
 
 		sendTransaction(from, to, amount)
 
+	} else if cmCheck("calc", 0) {
+		var edges []*big.Int
+		for j := 0; j < 100; j++ {
+			fmt.Println("Round", j)
+			pair := KeyGen(2000)
+			var vals []*big.Int
+			var blockID = 0
+			for i := 0; i < 1000; i++ {
+				drawMsgStr := strconv.Itoa(123 + blockID)
+				drawMsg := []byte(drawMsgStr)
+				draw := Sign(drawMsg, pair.Sk)
+
+				shaMsg := []byte(drawMsgStr + pair.Pk.toString() + draw.String())
+				sha := sha256.New()
+				sha.Write(shaMsg)
+				hash := sha.Sum(nil)
+
+				val := new(big.Int).Mul(big.NewInt(int64(PREMIUM_ACCOUNT)), new(big.Int).SetBytes(hash))
+
+				vals = append(vals, val)
+				blockID++
+			}
+
+			bigIntSort := func(i, j int) bool {
+				a := vals[i]
+				b := vals[j]
+				res := a.Cmp(b)
+				return res >= 0
+			}
+			sort.SliceStable(vals, bigIntSort)
+
+			index := int(math.Floor(0.1 * float64(len(vals))))
+			edges = append(edges, vals[index])
+		}
+
+		sum := big.NewInt(0)
+
+		for _, edge := range edges {
+			sum.Add(sum, edge)
+		}
+
+		avg := new(big.Int).Div(sum, big.NewInt(int64(len(edges))))
+
+		fmt.Println("Edges")
+		for _, val := range edges {
+			fmt.Println(val)
+		}
+
+		fmt.Println("Avg")
+		fmt.Println(avg)
+
 	} else if cmCheck("start", 1) {
 		index, err := strconv.Atoi(params[0])
 
@@ -252,8 +310,20 @@ func handleCommand(text string) {
 		fmt.Println("\tcreateClient | cc\t<ip : string> <RSA key index : int>")
 
 	} else if cmCheck("test", 0) {
-		c := createClient("")
-		createClient(c.ownPeer.Address)
+		var cs []*Client
+
+		for i := 0; i < 10; i++ {
+			var client *Client
+			if len(cs) > 0 {
+				index := int(math.Floor(rand.Float64() * float64(len(cs))))
+				prevClient := cs[index]
+				client = createClient(prevClient.ownPeer.Address)
+			} else {
+				client = createClient("")
+			}
+
+			cs = append(cs, client)
+		}
 
 		handleCommand("trans 0 0 1 100")
 		handleCommand("trans 0 0 1 100")

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/gob"
 	"fmt"
+	"math/big"
 	"net"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -96,6 +99,7 @@ func (c *Client) sendMessage(conn net.Conn, msg Message) {
 	var err = enc.Encode(&msg)
 	if err != nil {
 		fmt.Println("Got error when sending message: ", err.Error())
+		fmt.Println("Message:", msg)
 	}
 }
 
@@ -237,7 +241,7 @@ func (c *Client) handleBlock(block *Block, msg Message) {
 	// Used to debug unknown error where program crashes because of nil pointer
 	/*fmt.Println("Me:", c.ownPeer.Address)
 	fmt.Println("Peers:", c.peers)*/
-	if block.isValidSignature() {
+	if block.isValid(c.genesisBlock.Seed) {
 		if c.isBlockValid(block) {
 
 			c.blocks = append(c.blocks, block)
@@ -347,21 +351,26 @@ func (c *Client) generateBlock() *Block {
 		}
 	}
 
-	prevSign := ""
-	if c.genesisBlock != nil {
-		prevSign = c.getLongestBlock(c.currentBlockID).Signature
-	}
+	prevSign := c.getLongestBlock(c.currentBlockID).Signature
+	draw := CalculateDraw(c.genesisBlock.Seed, c.currentBlockID, c.sk)
 
-	block := &Block{c.currentBlockID, prevSign, c.ownPeer.Pk, transactions, ""}
-	blockMsg := GenerateMessageFromBlock(block)
-	signature := Sign(blockMsg, c.sk).String()
-	block.Signature = signature
+	block := &Block{c.currentBlockID, prevSign, c.ownPeer.Pk, transactions, "", draw}
+	c.SignBlock(block)
 
 	return block
 }
 
+func (c *Client) SignBlock(block *Block) {
+	blockMsg := GenerateMessageFromBlock(block)
+	signature := Sign(blockMsg, c.sk).String()
+	block.Signature = signature
+}
+
 func (c *Client) setGenesisBlock(genesis *GenesisBlock) {
-	//TODO Verify genesis block
+	if !genesis.isValid(genesis.Seed) {
+		panic("Got an invalid genesis key")
+	}
+
 	c.genesisBlock = genesis
 	c.blocks = append(c.blocks, genesis.Block)
 }
@@ -451,44 +460,60 @@ func (c *Client) generateNewestLedger() *Ledger {
 	ledger := MakeLedger()
 
 	block := c.getLongestBlock(MAX_INT)
-	blocks := []*Block{}
+	blocks := []*Block{block}
 
-	for block.ID != 0 {
-		blocks = append([]*Block{block}, blocks...) // Unshift the block
+	for block.PreviousBlock != "" {
 		block = c.getBlockBySignature(block.PreviousBlock)
+		blocks = append([]*Block{block}, blocks...) // Unshift the block
 	}
 
 	for _, kingKey := range c.genesisBlock.KingKeys {
-		ledger.InitializePremiumAccount(kingKey)
+		ledger.AddAmount(kingKey, PREMIUM_ACCOUNT)
+	}
+
+	fmt.Println("There are ", len(blocks), "blocks")
+	for _, b := range blocks {
+		fmt.Println("Block id:", b.ID, "from", c.GetPeerFromPK(b.Sender).Address)
 	}
 
 	for _, block := range blocks {
+		senderPay := 10 // Add 10 AU to the sender of the block
 		for _, transID := range block.Transactions {
 			foundTrans := false
 			for _, trans := range c.transactionsReceived {
 				if transID == trans.ID {
 					foundTrans = true
 					if ledger.SignedTransaction(&trans) {
-						printArrow()
+						senderPay++ // Add 1 AU for each valid transaction
 						break
 					} else {
-						fmt.Println("Transaction: " + trans.ID + " failed")
+						fmt.Println("Transaction: " + trans.ID + " is invalid")
 					}
 				}
 			}
 
 			if !foundTrans {
-				fmt.Println("Missing a transaction:", transID+". Returning nil")
+				fmt.Println("Missing a transaction:", transID+". Cannot calculate ledger")
 				return nil
 			}
 		}
+
+		senderPeer := c.GetPeerFromPK(block.Sender)
+		fmt.Println("Adding", senderPay, "to", senderPeer.Address)
+		ledger.AddAmount(block.Sender, senderPay)
 	}
 
 	return ledger
 }
 
 func (c *Client) startBlocks() {
-	go c.blockTimer()
+	// Only start the block if the cliens has a King key
+	for _, key := range c.genesisBlock.KingKeys {
+		if key == c.ownPeer.Pk {
+			go c.blockTimer()
+			return
+		}
+	}
 }
 
 func (c *Client) blockTimer() {
@@ -498,6 +523,27 @@ func (c *Client) blockTimer() {
 		select {
 		case <-ticker.C:
 			c.currentBlockID++
+
+			drawMsgStr := strconv.Itoa(c.genesisBlock.Seed + c.currentBlockID)
+			drawMsg := []byte(drawMsgStr)
+			draw := Sign(drawMsg, c.sk)
+
+			shaMsg := []byte(drawMsgStr + c.ownPeer.Pk + draw.String())
+			sha := sha256.New()
+			sha.Write(shaMsg)
+			hash := sha.Sum(nil)
+
+			val := new(big.Int).Mul(big.NewInt(int64(PREMIUM_ACCOUNT)), new(big.Int).SetBytes(hash))
+
+			if val.Cmp(HARDNESS) < 0 {
+				continue
+			}
+
+			fmt.Println("Got a valid draw")
+			fmt.Println("Hardness")
+			fmt.Println(HARDNESS)
+			fmt.Println("Val")
+			fmt.Println(val)
 
 			block := c.generateBlock()
 			msg := Message{ID: BLOCK_MESSAGE, Value: block}

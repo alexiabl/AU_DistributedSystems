@@ -1,5 +1,9 @@
 package main
 
+import (
+	"fmt"
+)
+
 type Network struct {
 	Clients  []*Client
 	KingKeys []KeyPair
@@ -25,17 +29,20 @@ func (n *Network) Initialize(initClient *Client, ip string) {
 	n.AddClient(initClient, ip)
 
 	// Generate genesis block
-	block := initClient.generateBlock()
-	genesisBlock := GenesisBlock{block, publicKingKeys, 123}
+	block := &Block{0, "", initClient.ownPeer.Pk, []string{}, "", CalculateDraw(SEED, 0, initClient.sk)}
+	initClient.SignBlock(block)
+	genesisBlock := GenesisBlock{block, publicKingKeys, SEED}
 	initClient.setGenesisBlock(&genesisBlock)
 }
 
 func (n *Network) GetNextKey() KeyPair {
 	if n.KeyIndex >= len(n.KingKeys) {
+		fmt.Println("Getting a random key")
 		return KeyGen(2000)
 	} else {
 		pair := n.KingKeys[n.KeyIndex]
 		n.KeyIndex++
+		fmt.Println("Getting a premium key")
 		return pair
 	}
 }
