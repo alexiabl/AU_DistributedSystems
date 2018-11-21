@@ -17,13 +17,9 @@ type GenesisBlock struct {
 	Seed     int
 }
 
-func (b *Block) isValid(seed int) bool {
+func (b *Block) isValid() bool {
 
 	pk := GeneratePublicKeyFromString(b.Sender)
-
-	if !IsValidDraw(seed, b.ID, b.Draw, pk) {
-		return false
-	}
 
 	blockMsg := GenerateMessageFromBlock(b)
 

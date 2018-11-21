@@ -47,5 +47,7 @@ func (t *SignedTransaction) isValid() bool {
 	signature.SetString(signatureString, 10)
 	message := GenerateMessageFromTransaction(t)
 
-	return Verify(message, signature, pk)
+	verify := Verify(message, signature, pk)
+
+	return verify
 }

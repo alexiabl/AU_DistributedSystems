@@ -67,3 +67,17 @@ func (l *Ledger) PrintStatus() {
 		fmt.Println("Account", i, "has", l.Accounts[str], "AU(s). Key:", str[0:50]+"...")
 	}
 }
+
+func (l *Ledger) Match(ledger *Ledger) bool {
+	var keys = reflect.ValueOf(l.Accounts).MapKeys()
+
+	for _, key := range keys {
+		keyStr := key.String()
+
+		if l.Accounts[keyStr] != ledger.Accounts[keyStr] {
+			return false
+		}
+	}
+
+	return true
+}

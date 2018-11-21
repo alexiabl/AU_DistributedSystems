@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var networks = []*Network{}
@@ -30,6 +31,7 @@ func createClient(ip string) *Client {
 			network.AddClient(client, ip)
 
 			fmt.Println("[Added client to existing network]")
+			time.Sleep(1 * time.Second)
 			return client
 		}
 	}
@@ -39,14 +41,18 @@ func createClient(ip string) *Client {
 	network := &Network{}
 	network.Initialize(client, ip)
 	networks = append(networks, network)
+	time.Sleep(1 * time.Second)
 
 	return client
 }
 
-func sendTransaction(from *Client, to *Client, amount int) {
+func sendTransaction(from *Client, to *Client, amount int) bool {
 	if from.ownPeer == to.ownPeer {
 		fmt.Println("from and to cannot be the same")
+	} else if amount < 1 {
+		fmt.Println("Cannot make a transaction of less than 1 AU")
 	} else {
+
 		id := from.ownPeer.Address + "-" + strconv.Itoa(from.transactionID)
 		from.transactionID++
 
@@ -60,11 +66,15 @@ func sendTransaction(from *Client, to *Client, amount int) {
 		if transaction.isValid() {
 			var message = Message{ID: TRANSACTION_MESSAGE, Value: transaction}
 
-			fmt.Println("Sending transaction with id ", id, " from ", from.ownPeer.Address, " to ", to.ownPeer.Address, " for ", amount, "Msg:", message)
+			//fmt.Println("Sending transaction with id ", id, " from ", from.ownPeer.Address, " to ", to.ownPeer.Address, " for ", amount, "Msg:", message)
 
 			from.handleTransaction(message)
+
+			return true
 		}
 	}
+
+	return false
 }
 
 func getOwnAddress() string {
@@ -96,6 +106,57 @@ func checkRange(index int, len int) {
 		gotError = true
 		fmt.Println("Index", index, "is out of range 0 -", len-1)
 	}
+}
+
+func benchmarkTransactions(network *Network) {
+
+	numClients := math.Min(10, float64(len(network.Clients)))
+
+	if numClients < 2 {
+		fmt.Println("Cannot run benchmark on a network with less than 2 peers")
+		printArrow()
+		return
+	}
+
+	NUM_TRANSACTIONS := 1000
+	start := time.Now()
+	sent := 0
+	// Send 1000 transactions
+	for i := 0; i < NUM_TRANSACTIONS; i++ {
+		r1 := int(math.Floor(rand.Float64() * float64(numClients)))
+		r2 := r1
+		for r2 == r1 {
+			r2 = int(math.Floor(rand.Float64() * float64(numClients)))
+		}
+
+		from := network.Clients[r1]
+		to := network.Clients[r2]
+
+		didSend := sendTransaction(from, to, 2)
+
+		if didSend {
+			sent++
+		}
+	}
+
+	fmt.Println("Sent", sent, "/", NUM_TRANSACTIONS, "transactions successfully")
+
+	// Wait until every client has gotten all the transactions
+	for i := 0; i < len(network.Clients); i++ {
+		client := network.Clients[i]
+
+		// We only need 90% of the transactions to arrive, because of a bug that makes valid transactions invalid
+		for len(client.transactionsReceived) < sent {
+			time.Sleep(1 * time.Millisecond)
+		}
+
+		fmt.Println("Client", i, "has ", len(client.transactionsReceived), "transactions")
+	}
+
+	t := time.Now()
+	elapsed := t.Sub(start)
+	fmt.Println("Time elapsed:", elapsed)
+	printArrow()
 }
 
 var gotError = false
@@ -208,6 +269,9 @@ func handleCommand(text string) {
 		sendTransaction(from, to, amount)
 
 	} else if cmCheck("calc", 0) {
+
+		fmt.Println("Calculating the average Val for a 90% threshold")
+
 		var edges []*big.Int
 		for j := 0; j < 100; j++ {
 			fmt.Println("Round", j)
@@ -250,13 +314,7 @@ func handleCommand(text string) {
 
 		avg := new(big.Int).Div(sum, big.NewInt(int64(len(edges))))
 
-		fmt.Println("Edges")
-		for _, val := range edges {
-			fmt.Println(val)
-		}
-
-		fmt.Println("Avg")
-		fmt.Println(avg)
+		fmt.Println("Average:", avg)
 
 	} else if cmCheck("start", 1) {
 		index, err := strconv.Atoi(params[0])
@@ -276,43 +334,119 @@ func handleCommand(text string) {
 		for i := 0; i < len(networks); i++ {
 			fmt.Println("##### Network", i, "#####")
 			network := networks[i]
-			for j := 0; j < len(network.Clients); j++ {
+
+			numClients := len(network.Clients)
+			var first *Ledger
+			var matches = 0
+
+			for j := 0; j < numClients; j++ {
 				fmt.Println("Client", j)
-				ledger := network.Clients[i].generateNewestLedger()
+				ledger, _ := network.Clients[i].generateNewestLedger()
 				if ledger != nil {
 					ledger.PrintStatus()
 					fmt.Println()
+
+					if first == nil {
+						first = ledger
+						matches = 1
+					} else if first.Match(ledger) {
+						matches++
+					}
 				}
 			}
+
+			fmt.Println("Got", matches, "/", numClients, "matches")
 		}
-	} else if cmCheck("networks", 0) {
-		// Print all the networks along side how many is in each
 	} else if cmCheck("list ls", 0) {
 		for i := 0; i < len(networks); i++ {
 
 			network := networks[i]
-			len := len(network.Clients)
+			length := len(network.Clients)
 
-			fmt.Println("Network", i, "contains", len, "client(s)")
+			fmt.Println("Network", i, "contains", length, "client(s)")
 
-			for j := 0; j < len; j++ {
+			for j := 0; j < length; j++ {
 				client := network.Clients[j]
-				fmt.Println("Client", j, "has ip", client.ownPeer.Address, " and key:", client.ownPeer.Pk[0:50]+"...")
+				fmt.Println("Client", j, "is connected to", len(client.peers), "peers, and has ip", client.ownPeer.Address, " and key:", client.ownPeer.Pk[0:50]+"...")
 			}
 
 			fmt.Println()
 		}
-	} else if cmCheck("keys", 1) {
-		// Print list of king keys in a given network
-	} else if cmCheck("help", 0) {
-		fmt.Println("A list of commands:")
-		fmt.Println("\trans\t<network : int> <from index : int> <to index : int> <amount : int>")
-		fmt.Println("\tcreateClient | cc\t<ip : string> <RSA key index : int>")
+	} else if cmCheck("benchmark bm", 1) {
+		index, err := strconv.Atoi(params[0])
 
-	} else if cmCheck("test", 0) {
+		checkError(err, "Invalid index")
+
+		if gotError {
+			return
+		}
+
+		network := networks[index]
+
+		fmt.Println("Please wait until the benchmark completes")
+		fmt.Println("Also note, that this command should only be called before any transactions have been made")
+
+		go benchmarkTransactions(network)
+
+	} else if cmCheck("keys", 0) {
+		fmt.Println("Listing all King keys in each network\n")
+		for networkIndex, network := range networks {
+
+			fmt.Println("Network", networkIndex)
+
+			for keyIndex, pair := range network.KingKeys {
+				fmt.Println("Public key", keyIndex, ":", pair.Pk.toString())
+			}
+
+			fmt.Println()
+		}
+	} else if cmCheck("help", 0) {
+		fmt.Println("Displaying a list of all commands:\n")
+
+		fmt.Println("createClient | cc\t<ip : string>")
+		fmt.Println("Creates a new client and adds it to an exsisting network, if the IP matches another peer\n")
+
+		fmt.Println("setup\t<numClients : int>")
+		fmt.Println("Setup a number of clients in a network, that will connect to each other randomly\n")
+
+		fmt.Println("trans\t<network : int> <from index : int> <to index : int> <amount : int>")
+		fmt.Println("Makes a transaction between two clients. Use \"list\" to see all clients in the network alongside their index\n")
+
+		fmt.Println("calc")
+		fmt.Println("Calculates the average Val for a 90% threshold. This is used to calculate an estimated hardness\n")
+
+		fmt.Println("start\t<network : int>")
+		fmt.Println("Begins running the lottery for a network of clients. Do not call this function more than once per network\n")
+
+		fmt.Println("status")
+		fmt.Println("Goes through each network and prints the ledger for each client, alongside how many ledgers match\n")
+
+		fmt.Println("list | ls\t")
+		fmt.Println("Lists all the peers in each network\n")
+
+		fmt.Println("benchmark | bm\t<network : int>")
+		fmt.Println("Runs a benchmark on a network, where 1000 transactions are sent randomly between all peers. This will display the time it takse for all the transactions to arrive\n")
+
+		fmt.Println("keys\t")
+		fmt.Println("Lists all the king keys for each network\n")
+
+		fmt.Println("help\t")
+		fmt.Println("Lists this list of commands\n")
+
+		fmt.Println("quit")
+		fmt.Println("Exits the program")
+
+	} else if cmCheck("setup", 1) {
+		numClients, err := strconv.Atoi(params[0])
+
+		if err != nil {
+			fmt.Println("Invalid number of clients")
+			return
+		}
+
 		var cs []*Client
 
-		for i := 0; i < 10; i++ {
+		for i := 0; i < numClients; i++ {
 			var client *Client
 			if len(cs) > 0 {
 				index := int(math.Floor(rand.Float64() * float64(len(cs))))
@@ -323,6 +457,17 @@ func handleCommand(text string) {
 			}
 
 			cs = append(cs, client)
+		}
+
+	} else if cmCheck("test", 1) {
+
+		handleCommand("setup " + params[0])
+
+		numClients, _ := strconv.Atoi(params[0])
+
+		if numClients < 2 {
+			fmt.Println("Num clients needs to be at least 2")
+			numClients = 2
 		}
 
 		handleCommand("trans 0 0 1 100")

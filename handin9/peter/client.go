@@ -1,13 +1,10 @@
 package main
 
 import (
-	"crypto/sha256"
 	"encoding/gob"
 	"fmt"
-	"math/big"
 	"net"
 	"sort"
-	"strconv"
 	"time"
 )
 
@@ -52,14 +49,12 @@ func (c *Client) GetPeerFromIP(ip string) *Peer {
 func (c *Client) getPeerList(targetIP string) {
 
 	// Try to establish connection
-	fmt.Println("Trying to connect to other peer...")
 	conn, err := net.Dial("tcp", targetIP)
 
 	if err != nil {
 		fmt.Println("No peer found or invalid IP/Port")
 		c.firstPeer = true
 	} else {
-		fmt.Println("Connection successful")
 		c.firstPeer = false
 
 		defer conn.Close()
@@ -86,11 +81,8 @@ func (c *Client) getPeerList(targetIP string) {
 			panic("Error while decoding InitInfo from message")
 		}
 
-		fmt.Println("[Got initial info]")
 		c.peers = initInfo.Peers
 		c.setGenesisBlock(&initInfo.GenesisBlock)
-
-		fmt.Println("Genesis block:", c.genesisBlock.KingKeys)
 	}
 }
 
@@ -127,7 +119,6 @@ func (c *Client) listenForConnections(ln net.Listener) {
 
 	for {
 		conn, _ := ln.Accept()
-		fmt.Println("Got a new connection ", conn.RemoteAddr())
 		go c.handleConnection(conn)
 	}
 }
@@ -170,14 +161,10 @@ func (c *Client) handleConnection(conn net.Conn) {
 			case NEW_PEER_MESSAGE:
 				var peer = message.Value.(Peer)
 
-				fmt.Println("got peer message:", peer)
-
 				// If the peer is already registered
 				if c.isPeerRegistered(peer.Address) {
 					break
 				}
-
-				fmt.Println("Wasn't already added")
 
 				c.peers = append(c.peers, peer)
 				c.sortPeers()
@@ -206,6 +193,7 @@ func (c *Client) handleTransaction(msg Message) {
 
 	// Don't broadcast an invalid message
 	if !transaction.isValid() {
+		fmt.Println("Received an invalid transaction")
 		return
 	}
 
@@ -224,41 +212,52 @@ func (c *Client) handleTransaction(msg Message) {
 	c.transactionsSent = append(c.transactionsSent, transID)
 	c.transactionsReceived = append(c.transactionsReceived, transaction)
 
-	fmt.Println("[Got valid transaction]")
-	printArrow()
-
 	c.outboundMessages <- msg
 }
 
 func (c *Client) handleBlock(block *Block, msg Message) {
 
+	// Skip this block, if it has already been received
 	for i := 0; i < len(c.blocks); i++ {
 		if c.blocks[i].ID == block.ID && c.blocks[i].Sender == block.Sender {
 			return
 		}
 	}
 
-	// Used to debug unknown error where program crashes because of nil pointer
-	/*fmt.Println("Me:", c.ownPeer.Address)
-	fmt.Println("Peers:", c.peers)*/
-	if block.isValid(c.genesisBlock.Seed) {
-		if c.isBlockValid(block) {
+	senderPk := GeneratePublicKeyFromString(block.Sender)
 
-			c.blocks = append(c.blocks, block)
+	if c.IsValidDraw(c.genesisBlock.Seed, block.ID, block.Draw, senderPk) {
+		if block.isValid() {
+			if c.isBlockValid(block) {
 
-			c.outboundMessages <- msg
+				c.blocks = append(c.blocks, block)
+				c.outboundMessages <- msg
+				return
+			}
+		} else {
+			fmt.Println("Invalid block: unable to match the signature with the block")
 		}
 	}
+
+	fmt.Println("[Warning] Received an invalid block")
 }
 
 func (c *Client) isBlockValid(block *Block) bool {
 
 	prev := c.getBlockBySignature(block.PreviousBlock)
 
-	if block.ID > prev.ID { // Verify that prev block is smaller than current
-		if block.ID <= c.currentBlockID+1 { // Verify that the block is the expected one
-			return true
+	if prev != nil {
+		if block.ID > prev.ID { // Verify that prev block is smaller than current
+			if block.ID <= c.currentBlockID+1 { // Verify that the block is the expected one
+				return true
+			} else {
+				fmt.Println("Invalid block: block ID is too far ahead. Got", block.ID, "but is currently on", c.currentBlockID)
+			}
+		} else {
+			fmt.Println("Invalid block: the block ID is lower than that of the previous block")
 		}
+	} else {
+		fmt.Println("Invalid block: unable to locate the previous block")
 	}
 
 	return false
@@ -272,7 +271,7 @@ func (c *Client) getBlockBySignature(sign string) *Block {
 		}
 	}
 
-	return c.genesisBlock.Block
+	return nil
 }
 
 func (c *Client) getLongestBlock(lessThanID int) *Block {
@@ -352,7 +351,7 @@ func (c *Client) generateBlock() *Block {
 	}
 
 	prevSign := c.getLongestBlock(c.currentBlockID).Signature
-	draw := CalculateDraw(c.genesisBlock.Seed, c.currentBlockID, c.sk)
+	draw := GenerateDraw(c.genesisBlock.Seed, c.currentBlockID, c.sk)
 
 	block := &Block{c.currentBlockID, prevSign, c.ownPeer.Pk, transactions, "", draw}
 	c.SignBlock(block)
@@ -367,7 +366,7 @@ func (c *Client) SignBlock(block *Block) {
 }
 
 func (c *Client) setGenesisBlock(genesis *GenesisBlock) {
-	if !genesis.isValid(genesis.Seed) {
+	if !genesis.isValid() {
 		panic("Got an invalid genesis key")
 	}
 
@@ -405,8 +404,6 @@ func (c *Client) broadcastMessages() {
 
 func (c *Client) connectToPeers() {
 
-	fmt.Println("Connecting to up to 10 peers in the network")
-
 	// Find the index of itself
 	var len = len(c.peers)
 	var index = -1
@@ -438,8 +435,6 @@ func (c *Client) connectToPeers() {
 		if err != nil {
 			fmt.Println("Unable to connect to peer: ", peer.Address)
 		} else {
-			fmt.Println("Connected to: ", peer.Address)
-
 			go c.handleConnection(conn)
 		}
 	}
@@ -455,15 +450,28 @@ func (c *Client) addSelfToList() {
 	c.sortPeers()
 }
 
-func (c *Client) generateNewestLedger() *Ledger {
+/* Returns a ledger alongside a boolean describing if the ledger is valid or not.
+The ledger will be invalid only if a block brings an account below 0. */
+func (c *Client) generateNewestLedger() (*Ledger, bool) {
+	block := c.getLongestBlock(MAX_INT)
+
+	return c.generateLedgerForBlock(block)
+}
+
+func (c *Client) generateLedgerForBlock(block *Block) (*Ledger, bool) {
 	// Make a copy of the current ledger
 	ledger := MakeLedger()
 
-	block := c.getLongestBlock(MAX_INT)
 	blocks := []*Block{block}
 
 	for block.PreviousBlock != "" {
 		block = c.getBlockBySignature(block.PreviousBlock)
+
+		if block == nil {
+			fmt.Println("Unable to generate ledger: missing block with ID", block.PreviousBlock[0:50])
+			return nil, true
+		}
+
 		blocks = append([]*Block{block}, blocks...) // Unshift the block
 	}
 
@@ -472,17 +480,30 @@ func (c *Client) generateNewestLedger() *Ledger {
 	}
 
 	fmt.Println("There are ", len(blocks), "blocks")
-	for _, b := range blocks {
-		fmt.Println("Block id:", b.ID, "from", c.GetPeerFromPK(b.Sender).Address)
-	}
+
+	var usedTransactions []string
 
 	for _, block := range blocks {
 		senderPay := 10 // Add 10 AU to the sender of the block
 		for _, transID := range block.Transactions {
+
+			// Skip this ID, if it has already been seen
+			isUsed := false
+			for _, id := range usedTransactions {
+				if id == transID {
+					isUsed = true
+					break
+				}
+			}
+			if isUsed {
+				continue
+			}
+
 			foundTrans := false
 			for _, trans := range c.transactionsReceived {
 				if transID == trans.ID {
 					foundTrans = true
+					usedTransactions = append(usedTransactions, transID)
 					if ledger.SignedTransaction(&trans) {
 						senderPay++ // Add 1 AU for each valid transaction
 						break
@@ -494,7 +515,7 @@ func (c *Client) generateNewestLedger() *Ledger {
 
 			if !foundTrans {
 				fmt.Println("Missing a transaction:", transID+". Cannot calculate ledger")
-				return nil
+				return nil, true
 			}
 		}
 
@@ -503,7 +524,7 @@ func (c *Client) generateNewestLedger() *Ledger {
 		ledger.AddAmount(block.Sender, senderPay)
 	}
 
-	return ledger
+	return ledger, true
 }
 
 func (c *Client) startBlocks() {
@@ -517,35 +538,25 @@ func (c *Client) startBlocks() {
 }
 
 func (c *Client) blockTimer() {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(SLOT_LENGTH)
 
 	for {
 		select {
 		case <-ticker.C:
 			c.currentBlockID++
 
-			drawMsgStr := strconv.Itoa(c.genesisBlock.Seed + c.currentBlockID)
-			drawMsg := []byte(drawMsgStr)
-			draw := Sign(drawMsg, c.sk)
-
-			shaMsg := []byte(drawMsgStr + c.ownPeer.Pk + draw.String())
-			sha := sha256.New()
-			sha.Write(shaMsg)
-			hash := sha.Sum(nil)
-
-			val := new(big.Int).Mul(big.NewInt(int64(PREMIUM_ACCOUNT)), new(big.Int).SetBytes(hash))
+			draw := GenerateDraw(c.genesisBlock.Seed, c.currentBlockID, c.sk)
+			val := c.CalculateDrawValue(c.genesisBlock.Seed, c.currentBlockID, draw, c.pk)
 
 			if val.Cmp(HARDNESS) < 0 {
 				continue
 			}
 
-			fmt.Println("Got a valid draw")
-			fmt.Println("Hardness")
-			fmt.Println(HARDNESS)
-			fmt.Println("Val")
-			fmt.Println(val)
+			fmt.Println("Got a valid draw from", c.ownPeer.Address, "with val", val.String())
+			printArrow()
 
 			block := c.generateBlock()
+			block.Draw = draw
 			msg := Message{ID: BLOCK_MESSAGE, Value: block}
 			c.handleBlock(block, msg)
 		}
